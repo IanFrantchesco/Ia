@@ -99,17 +99,6 @@ def chamar_gemini(prompt: str) -> str:
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
-def chamar_anthropic(prompt: str) -> str:
-    import anthropic
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    msg = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system="Você é economista especialista em história econômica do Brasil. Responda sempre em português brasileiro.",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return msg.content[0].text
-
 # ── endpoints ──────────────────────────────────────────────────────────────
 
 @app.get("/api/presidentes")
@@ -167,28 +156,20 @@ class AnaliseRequest(BaseModel):
 
 @app.post("/api/analise")
 def gerar_analise(req: AnaliseRequest):
-    google_key    = os.getenv("GOOGLE_API_KEY")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    google_key = os.getenv("GOOGLE_API_KEY")
 
-    if not google_key and not anthropic_key:
+    if not google_key:
         raise HTTPException(
             503,
-            detail=(
-                "Nenhuma chave de IA configurada. "
-                "Adicione GOOGLE_API_KEY (gratuito) ou ANTHROPIC_API_KEY "
-                "nas variáveis de ambiente do Railway."
-            ),
+            detail="GOOGLE_API_KEY não configurada. Adicione nas variáveis do Railway.",
         )
 
     prompt = build_prompt(req.presidentes)
 
     try:
-        if google_key:
-            texto = chamar_gemini(prompt)
-        else:
-            texto = chamar_anthropic(prompt)
+        texto = chamar_gemini(prompt)
     except Exception as e:
-        raise HTTPException(500, detail=f"Erro ao chamar a IA: {str(e)}")
+        raise HTTPException(500, detail=f"Erro ao chamar o Gemini: {str(e)}")
 
     return {"analise": texto}
 

@@ -336,6 +336,78 @@
     .inter-conduta strong { font-weight: 700; }
     .no-data { font-size: .78rem; color: var(--muted); font-style: italic; }
 
+    /* ── Tratamento padrão-ouro ─────────────────────────────────────── */
+    .trat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .trat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #fbbf24, #f59e0b, #d97706);
+    }
+    .trat-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .trat-atb-principal { font-size: 1.1rem; font-weight: 800; color: #fbbf24; }
+    .trat-combinacao { font-size: .85rem; color: var(--muted); font-style: italic; margin-top: .15rem; }
+    .trat-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .badge-grau {
+      font-size: .7rem; font-weight: 800; padding: .25rem .6rem;
+      border-radius: 5px; text-transform: uppercase; letter-spacing: .06em;
+      background: rgba(251,191,36,.15); color: #fbbf24;
+      border: 1px solid rgba(251,191,36,.3);
+    }
+    .badge-ev {
+      font-size: .7rem; font-weight: 700; padding: .25rem .6rem;
+      border-radius: 5px;
+      background: rgba(129,140,248,.1); color: var(--accent2);
+      border: 1px solid rgba(129,140,248,.25);
+    }
+    .trat-regime {
+      background: rgba(251,191,36,.06);
+      border: 1px solid rgba(251,191,36,.15);
+      border-radius: 8px;
+      padding: .75rem 1rem;
+      font-size: .88rem; line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .trat-duracao { font-size: .78rem; color: #fbbf24; font-weight: 700; margin-bottom: 1rem; }
+    .trat-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: 1rem;
+    }
+    @media (max-width: 700px) { .trat-grid { grid-template-columns: 1fr; } }
+    .trat-section {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: .7rem .9rem; font-size: .8rem;
+    }
+    .trat-section-title {
+      font-size: .68rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: .4rem;
+    }
+    .trat-section-body { line-height: 1.55; color: var(--text); }
+    .trat-justif {
+      font-size: .82rem; color: var(--muted); line-height: 1.6;
+      border-top: 1px solid var(--border); padding-top: .85rem;
+    }
+    .trat-obs {
+      font-size: .78rem; color: #fbbf24; opacity: .9; line-height: 1.5;
+      background: rgba(251,191,36,.05);
+      border: 1px solid rgba(251,191,36,.15);
+      border-radius: 8px; padding: .65rem .9rem; margin-top: .75rem;
+    }
+    .trat-fonte {
+      font-size: .7rem; color: var(--muted); margin-top: .75rem;
+      display: flex; gap: .4rem; align-items: center; flex-wrap: wrap;
+    }
+
     /* ── Source footnote ────────────────────────────────────────────── */
     .source-bar {
       background: var(--surface);
@@ -496,7 +568,7 @@ function showLoading() {
 
 // ── Render ─────────────────────────────────────────────────────────────
 function renderResult(data) {
-  const { patologia: p, bacterias, top3_antibioticos: atbs } = data;
+  const { patologia: p, bacterias, top3_antibioticos: atbs, tratamento_padrao: trat } = data;
 
   const prevLabel = {
     muito_alta:'Muito Alta', alta:'Alta', media:'Média',
@@ -634,6 +706,41 @@ function renderResult(data) {
       Sem dados de eficácia de antibióticos cadastrados para esta patologia.</p>`;
   }
 
+  // Tratamento padrão-ouro
+  let tratHtml = '';
+  if (trat) {
+    const grauDesc = { A:'Recomendação Forte', B:'Recomendação Moderada', C:'Recomendação Fraca', D:'Consenso de Especialistas' };
+    const nivDesc  = { I:'Evidência I (ECR)', II:'Evidência II (Observacional)', III:'Evidência III (Consenso)' };
+    tratHtml = `
+      <div class="section-title">Tratamento Padrão-Ouro</div>
+      <div class="trat-card">
+        <div class="trat-header">
+          <div>
+            <div class="trat-atb-principal">${trat.antibiotico_principal}</div>
+            ${trat.combinacao ? `<div class="trat-combinacao">${trat.combinacao}</div>` : ''}
+          </div>
+          <div class="trat-badges">
+            ${trat.grau_recomendacao ? `<span class="badge-grau">Grau ${trat.grau_recomendacao} — ${grauDesc[trat.grau_recomendacao]||''}</span>` : ''}
+            ${trat.nivel_evidencia ? `<span class="badge-ev">${nivDesc[trat.nivel_evidencia]||trat.nivel_evidencia}</span>` : ''}
+          </div>
+        </div>
+        <div class="trat-regime">${trat.regime_resumido||''}</div>
+        ${trat.duracao_resumida ? `<div class="trat-duracao">⏱ Duração: ${trat.duracao_resumida}</div>` : ''}
+        <div class="trat-grid">
+          ${trat.alternativa_alergia ? `<div class="trat-section"><div class="trat-section-title">Alternativa por Alergia</div><div class="trat-section-body">${trat.alternativa_alergia}</div></div>` : ''}
+          ${trat.alternativa_resistencia ? `<div class="trat-section"><div class="trat-section-title">Alternativa por Resistência</div><div class="trat-section-body">${trat.alternativa_resistencia}</div></div>` : ''}
+        </div>
+        ${trat.justificativa ? `<div class="trat-justif"><strong>Justificativa:</strong> ${trat.justificativa}</div>` : ''}
+        ${trat.obs_especiais ? `<div class="trat-obs">⚠️ ${trat.obs_especiais}</div>` : ''}
+        <div class="trat-fonte">
+          <span>Fonte:</span>
+          ${trat.fonte_sigla ? `<span class="source-chip">${trat.fonte_sigla}</span>` : ''}
+          ${trat.fonte_nome ? `<span>${trat.fonte_nome}</span>` : ''}
+          ${trat.ano_diretriz ? `<span>· ${trat.ano_diretriz}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
   // Sources
   const fontes = [...new Set(atbs.map(a => a.fonte).filter(Boolean))];
   const fontesHtml = fontes.map(f => `<span class="source-chip">${f}</span>`).join('');
@@ -680,6 +787,9 @@ function renderResult(data) {
       <!-- ATB cards -->
       <div class="section-title">Top 3 Antibióticos Mais Eficazes</div>
       <div class="atb-cards">${atbCardsHtml}</div>
+
+      <!-- Tratamento padrão-ouro -->
+      ${tratHtml}
 
       <!-- Source footnote -->
       <div class="source-bar">

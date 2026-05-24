@@ -274,6 +274,19 @@ def bact_detalhe(patologia_id: int):
                     (bact_id_row["id"],),
                 ).fetchall()
 
+        tratamento = db.execute(
+            """SELECT t.antibiotico_principal, t.combinacao,
+                      t.regime_resumido, t.duracao_resumida, t.justificativa,
+                      t.alternativa_alergia, t.alternativa_resistencia,
+                      t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
+                      t.ano_diretriz,
+                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
+               FROM tratamento_padrao_ouro t
+               LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
+               WHERE t.patologia_id = ?""",
+            (patologia_id,),
+        ).fetchone()
+
     def enrich_atb(r):
         ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
         ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
@@ -348,9 +361,10 @@ def bact_detalhe(patologia_id: int):
         }
 
     return {
-        "patologia":        dict(pat),
-        "bacterias":        [dict(b) for b in bacterias],
-        "top3_antibioticos": [enrich_atb(r) for r in antibioticos],
+        "patologia":          dict(pat),
+        "bacterias":          [dict(b) for b in bacterias],
+        "top3_antibioticos":  [enrich_atb(r) for r in antibioticos],
+        "tratamento_padrao":  dict(tratamento) if tratamento else None,
     }
 
 

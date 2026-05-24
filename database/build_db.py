@@ -18,6 +18,7 @@ from data_patologias import CATEGORIAS_PATOLOGIAS, PATOLOGIAS
 from data_eficacia import EFICACIA
 from data_posologia import POSOLOGIA
 from data_interacoes import INTERACOES
+from data_tratamento_padrao_ouro import TRATAMENTO_PADRAO_OURO
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -287,6 +288,39 @@ def insert_interacoes(conn):
     return inserted, skipped
 
 
+def insert_tratamento_padrao_ouro(conn):
+    inserted = skipped = 0
+    for rec in TRATAMENTO_PADRAO_OURO:
+        (pat_substr, atb_principal, combinacao, regime, duracao,
+         justificativa, alt_alergia, alt_resistencia, obs,
+         grau_rec, nivel_ev, fonte_sigla, ano_diretriz) = rec
+
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            print(f"  [AVISO] Patologia não encontrada: {pat_substr!r}")
+            skipped += 1
+            continue
+
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+
+        conn.execute(
+            """INSERT OR IGNORE INTO tratamento_padrao_ouro
+               (patologia_id, antibiotico_principal, combinacao, regime_resumido,
+                duracao_resumida, justificativa, alternativa_alergia,
+                alternativa_resistencia, obs_especiais, grau_recomendacao,
+                nivel_evidencia, fonte_id, ano_diretriz)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pat_id, atb_principal, combinacao, regime, duracao,
+             justificativa, alt_alergia, alt_resistencia, obs,
+             grau_rec, nivel_ev, fonte_id, ano_diretriz),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
 def print_summary(conn):
     tables = [
         "fontes_oficiais", "familias_bacterianas", "bacterias",
@@ -294,6 +328,7 @@ def print_summary(conn):
         "categorias_patologias", "patologias",
         "patologia_bacteria", "eficacia_antibiotico",
         "posologia", "interacoes_medicamentosas",
+        "tratamento_padrao_ouro",
     ]
     print("\n── Resumo do banco de dados ──────────────────────")
     for t in tables:
@@ -357,6 +392,11 @@ def build():
     inserted, skipped = insert_interacoes(conn)
     conn.commit()
     print(f"  → {inserted} inseridas, {skipped} ignoradas")
+
+    print("Inserindo tratamento padrão-ouro...")
+    inserted, skipped = insert_tratamento_padrao_ouro(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
 
     print_summary(conn)
     conn.close()

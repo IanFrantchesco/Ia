@@ -268,3 +268,26 @@ JOIN classes_antibioticos ca ON ca.id = a.classe_id
 LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
 WHERE e.resistencia_br_pct IS NOT NULL
 ORDER BY e.resistencia_br_pct DESC;
+
+-- ------------------------------------------------------------
+-- TRATAMENTO PADRÃO-OURO POR PATOLOGIA
+-- Fontes: PCDTs MS, GVS, SBI, ANVISA
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id            INTEGER NOT NULL REFERENCES patologias(id),
+    antibiotico_principal   TEXT NOT NULL,
+    combinacao              TEXT,
+    regime_resumido         TEXT,
+    duracao_resumida        TEXT,
+    justificativa           TEXT,
+    alternativa_alergia     TEXT,
+    alternativa_resistencia TEXT,
+    obs_especiais           TEXT,
+    grau_recomendacao       TEXT CHECK(grau_recomendacao IN ('A', 'B', 'C', 'D')),
+    nivel_evidencia         TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id),
+    ano_diretriz            INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_trat_padrao_patologia ON tratamento_padrao_ouro(patologia_id);

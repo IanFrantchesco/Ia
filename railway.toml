@@ -2,6 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python monitor_ep.py"
-cronSchedule = "0 8 * * 1"
-restartPolicyType = "NEVER"
+startCommand = "cd brasil_economico && uvicorn app:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "ON_FAILURE"

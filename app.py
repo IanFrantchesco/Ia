@@ -12,15 +12,21 @@ import sqlite3
 import os
 from pathlib import Path
 
-DB_PATH  = Path(__file__).parent / "output" / "brasil_economico.db"
-STATIC   = Path(__file__).parent / "static"
+DB_PATH      = Path(__file__).parent / "output" / "brasil_economico.db"
+DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.sqlite"
+STATIC       = Path(__file__).parent / "static"
 
-app = FastAPI(title="Brasil Político")
+app = FastAPI(title="Brasil Político + Patologias Bacterianas")
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
 def conn():
     c = sqlite3.connect(DB_PATH)
+    c.row_factory = sqlite3.Row
+    return c
+
+def conn_bact():
+    c = sqlite3.connect(DB_BACT_PATH)
     c.row_factory = sqlite3.Row
     return c
 
@@ -152,6 +158,156 @@ Responda em português brasileiro."""
         messages=[{"role": "user", "content": prompt}],
     )
     return {"analise": msg.content[0].text}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PATOLOGIAS BACTERIANAS – endpoints
+# ══════════════════════════════════════════════════════════════════════════
+
+EVIDENCIA_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
+LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
+
+
+@app.get("/api/bacterias/categorias")
+def bact_categorias():
+    with conn_bact() as db:
+        rows = db.execute(
+            "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/bacterias/patologias")
+def bact_patologias(categoria_id: int = None):
+    sql = """
+        SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+               p.notificacao_compulsoria, p.tipo_notificacao,
+               c.nome AS categoria
+        FROM patologias p
+        JOIN categorias_patologias c ON c.id = p.categoria_id
+    """
+    params = []
+    if categoria_id:
+        sql += " WHERE p.categoria_id = ?"
+        params.append(categoria_id)
+    sql += " ORDER BY p.nome"
+    with conn_bact() as db:
+        rows = db.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/bacterias/patologia/{patologia_id}")
+def bact_detalhe(patologia_id: int):
+    with conn_bact() as db:
+        pat = db.execute(
+            """SELECT p.id, p.nome, p.cid10, p.descricao,
+                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
+                      p.notificacao_compulsoria, p.tipo_notificacao,
+                      c.nome AS categoria, c.sistema,
+                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
+               FROM patologias p
+               JOIN categorias_patologias c ON c.id = p.categoria_id
+               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
+               WHERE p.id = ?""",
+            (patologia_id,),
+        ).fetchone()
+        if not pat:
+            raise HTTPException(404, "Patologia não encontrada")
+
+        bacterias = db.execute(
+            """SELECT b.nome_cientifico, b.nome_comum, b.gram,
+                      b.aerobiose, b.formato, b.resistencia_natural,
+                      pb.papel, pb.frequencia_pct
+               FROM patologia_bacteria pb
+               JOIN bacterias b ON b.id = pb.bacteria_id
+               WHERE pb.patologia_id = ?
+               ORDER BY pb.papel, pb.frequencia_pct DESC""",
+            (patologia_id,),
+        ).fetchall()
+
+        # Top 3 antibióticos mais eficazes para esta patologia
+        antibioticos = db.execute(
+            """SELECT
+                a.nome_generico, a.nome_comercial, a.via_administracao,
+                a.disponivel_sus,
+                ca.nome AS classe,
+                b.nome_cientifico AS bacteria,
+                e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
+                e.resistencia_br_pct, e.consideracoes,
+                fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
+               FROM eficacia_antibiotico e
+               JOIN antibioticos a ON a.id = e.antibiotico_id
+               JOIN classes_antibioticos ca ON ca.id = a.classe_id
+               JOIN bacterias b ON b.id = e.bacteria_id
+               LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
+               WHERE e.patologia_id = ?
+               ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+               LIMIT 3""",
+            (patologia_id,),
+        ).fetchall()
+
+        # Se não encontrou por patologia_id, busca pela bactéria principal
+        if not antibioticos and bacterias:
+            bact_principal = bacterias[0]["nome_cientifico"]
+            bact_id_row = db.execute(
+                "SELECT id FROM bacterias WHERE nome_cientifico = ?",
+                (bact_principal,),
+            ).fetchone()
+            if bact_id_row:
+                antibioticos = db.execute(
+                    """SELECT
+                        a.nome_generico, a.nome_comercial, a.via_administracao,
+                        a.disponivel_sus,
+                        ca.nome AS classe,
+                        b.nome_cientifico AS bacteria,
+                        e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
+                        e.resistencia_br_pct, e.consideracoes,
+                        fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
+                       FROM eficacia_antibiotico e
+                       JOIN antibioticos a ON a.id = e.antibiotico_id
+                       JOIN classes_antibioticos ca ON ca.id = a.classe_id
+                       JOIN bacterias b ON b.id = e.bacteria_id
+                       LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
+                       WHERE e.bacteria_id = ? AND e.patologia_id IS NULL
+                       ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+                       LIMIT 3""",
+                    (bact_id_row["id"],),
+                ).fetchall()
+
+    def score_atb(r):
+        ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
+        ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
+        seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
+        sus = 100 if r["disponivel_sus"] else 0
+        return {
+            "nome_generico":    r["nome_generico"],
+            "nome_comercial":   r["nome_comercial"],
+            "via":              r["via_administracao"],
+            "disponivel_sus":   bool(r["disponivel_sus"]),
+            "classe":           r["classe"],
+            "bacteria":         r["bacteria"],
+            "eficacia_pct":     r["eficacia_pct"],
+            "linha_tratamento": r["linha_tratamento"],
+            "nivel_evidencia":  r["nivel_evidencia"],
+            "resistencia_br_pct": r["resistencia_br_pct"],
+            "consideracoes":    r["consideracoes"],
+            "fonte":            r["fonte"],
+            "fonte_nome":       r["fonte_nome"],
+            "fonte_ano":        r["fonte_ano"],
+            "radar": {
+                "eficacia":   round(r["eficacia_pct"] or 0, 1),
+                "seguranca":  round(seg, 1),
+                "evidencia":  ev,
+                "primeira_linha": ln,
+                "acesso_sus": sus,
+            },
+        }
+
+    return {
+        "patologia": dict(pat),
+        "bacterias": [dict(b) for b in bacterias],
+        "top3_antibioticos": [score_atb(r) for r in antibioticos],
+    }
 
 
 # ── static (deve ser o último mount) ───────────────────────────────────────

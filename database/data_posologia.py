@@ -1,0 +1,422 @@
+"""
+Dados de posologia por antibiótico.
+Fontes: PCDTs MS, bulas ANVISA registradas, SBI/SBPT diretrizes, Micromedex BR.
+
+Formato: (antibiotico_nome, patologia_substr_ou_None, populacao,
+          dose_unitaria, frequencia, via,
+          duracao_min_dias, duracao_max_dias, duracao_texto,
+          ajuste_renal, ajuste_hepatico, observacoes, fonte_sigla)
+"""
+
+POSOLOGIA = [
+    # ══════════════════════════════════════════════════════════════════
+    # PENICILINAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Penicilina G benzatina", "Sífilis (adquirida, primária",
+     "adulto",     "1.200.000 UI",  "dose única",  "im",  1,  1,  "dose única",
+     False, False, "Sífilis primária e secundária. Duas doses semanais na sífilis terciária.", "PCDT-IST"),
+    ("Penicilina G benzatina", "Sífilis (adquirida, primária",
+     "gestante",   "1.200.000 UI",  "1x/semana × 3", "im", 21, 21, "3 doses semanais",
+     False, False, "Gestantes: 3 doses independente do estágio.", "PCDT-IST"),
+    ("Penicilina G benzatina", "Faringite",
+     "adulto",     "1.200.000 UI",  "dose única",  "im",  1,  1,  "dose única",
+     False, False, "Erradica S. pyogenes; elimina risco de febre reumática.", "GVS-MS"),
+    ("Penicilina G benzatina", "Faringite",
+     "pediatrico", "600.000 UI",    "dose única",  "im",  1,  1,  "dose única",
+     False, False, "< 27 kg: 600.000 UI; ≥ 27 kg: 1.200.000 UI.", "GVS-MS"),
+
+    ("Penicilina G cristalina", "Meningite Bacteriana por Neisseria",
+     "adulto",     "4.000.000 UI",  "4/4h",        "iv", 7,  14, "7-14 dias",
+     True,  False, "Total 18-24 MI UI/dia. Ajuste em ClCr < 10 mL/min.", "PCDT-MENIN"),
+    ("Penicilina G cristalina", "Meningite Bacteriana por Streptococcus pneumoniae",
+     "adulto",     "4.000.000 UI",  "4/4h",        "iv", 10, 14, "10-14 dias",
+     True,  False, "Alta dose obrigatória em meningite.", "PCDT-MENIN"),
+    ("Penicilina G cristalina", "Leptospirose",
+     "adulto",     "1.500.000 UI",  "6/6h",        "iv",  7,  7, "7 dias",
+     True,  False, "Formas graves (Weil). Ajustar em insuficiência renal.", "PCDT-LEPTO"),
+    ("Penicilina G cristalina", "Tétano Acidental",
+     "adulto",     "2.000.000 UI",  "4/4h",        "iv",  7, 10, "7-10 dias",
+     True,  False, "Erradicação de C. tetani; desbridamento cirúrgico essencial.", "PCDT-TETANO"),
+    ("Penicilina G cristalina", "Sífilis (adquirida",
+     "adulto",     "3.000.000 UI",  "4/4h",        "iv", 14, 14, "14 dias",
+     True,  False, "Neurossífilis: 18-24 MI UI/dia por 14 dias IV.", "PCDT-IST"),
+
+    ("Amoxicilina", "Pneumonia Adquirida na Comunidade (PAC) – Streptococcus",
+     "adulto",     "500 mg",        "8/8h",        "oral", 5,  7, "5-7 dias",
+     True,  False, "PAC leve-moderada ambulatorial. Aumentar para 1g 8/8h se pneumococo resistente.", "SBI-PNEUM"),
+    ("Amoxicilina", "Pneumonia Adquirida na Comunidade (PAC) – Streptococcus",
+     "pediatrico", "45 mg/kg/dia",  "12/12h",      "oral", 5,  7, "5-7 dias",
+     True,  False, "Dose máxima 90 mg/kg/dia em áreas de alta resistência.", "SBI-PNEUM"),
+    ("Amoxicilina", "Faringite",
+     "adulto",     "500 mg",        "12/12h",      "oral", 10, 10, "10 dias",
+     False, False, "Superior à penicilina V em adesão; 10 dias obrigatórios.", "GVS-MS"),
+    ("Amoxicilina", "Otite Média",
+     "pediatrico", "40-45 mg/kg/dia","12/12h",     "oral",  5, 10, "5-10 dias",
+     False, False, "Alta dose (80-90 mg/kg/dia) em áreas de alta resistência do pneumococo.", "GVS-MS"),
+    ("Amoxicilina", "Actinomicose",
+     "adulto",     "500 mg",        "8/8h",        "oral", 180, 365, "6-12 meses",
+     False, False, "Fase de manutenção oral após 2-6 semanas de penicilina G IV.", "GVS-MS"),
+
+    ("Amoxicilina-clavulanato", "Pneumonia Adquirida na Comunidade (PAC)",
+     "adulto",     "875/125 mg",    "12/12h",      "oral",  5,  7, "5-7 dias",
+     True,  True,  "PAC moderada ambulatorial. Preferir durante às refeições para reduzir GI.", "SBI-PNEUM"),
+    ("Amoxicilina-clavulanato", "Sinusite Bacteriana",
+     "adulto",     "875/125 mg",    "12/12h",      "oral",  5,  7, "5-7 dias",
+     True,  True,  "Segunda linha ou falha de amoxicilina simples.", "GVS-MS"),
+    ("Amoxicilina-clavulanato", "Otite Média",
+     "pediatrico", "45/6.4 mg/kg/dia","12/12h",    "oral",  5, 10, "5-10 dias",
+     True,  True,  "Falha de amoxicilina ou suspeita de H. influenzae beta-lactamase+.", "GVS-MS"),
+
+    ("Ampicilina-sulbactam", "Infecção por Acinetobacter",
+     "adulto",     "3 g (2g/1g)",   "6/6h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Apenas cepas sensíveis ao sulbactam. Dose de sulbactam até 6g/dia em CRAB.", "ANVISA-IRAS"),
+
+    ("Piperacilina-tazobactam", "Pneumonia Hospitalar",
+     "adulto",     "4,5 g",         "6/6h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Infusão estendida 4h melhora desfecho em Pseudomonas. Ajuste em ClCr < 40.", "ANVISA-IRAS"),
+    ("Piperacilina-tazobactam", "Peritonite Bacteriana",
+     "adulto",     "4,5 g",         "8/8h",        "iv",   5, 14, "5-14 dias",
+     True,  False, "Cobertura de gram-negativos e anaeróbios.", "GVS-MS"),
+
+    ("Oxacilina", "Endocardite Infecciosa por Staphylococcus aureus",
+     "adulto",     "2 g",           "4/4h",        "iv",  28, 42, "4-6 semanas",
+     False, True,  "MSSA. Não ajustar dose em insuficiência renal isolada.", "GVS-MS"),
+    ("Oxacilina", "Osteomielite Hematogênica",
+     "adulto",     "2 g",           "6/6h",        "iv",  28, 42, "4-6 semanas",
+     False, True,  "MSSA. Após 2 semanas IV, pode-se considerar transição oral se boa resposta.", "GVS-MS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # CEFALOSPORINAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Cefalexina", "Celulite Bacteriana",
+     "adulto",     "500 mg",        "6/6h",        "oral",  5,  7, "5-7 dias",
+     True,  False, "Celulite não-purulenta leve-moderada.", "GVS-MS"),
+    ("Cefalexina", "Cistite Não Complicada",
+     "adulto",     "500 mg",        "6/6h",        "oral",  3,  7, "3-7 dias",
+     True,  False, "S. saprophyticus e S. aureus MSSA em ITU.", "SBI-ITU"),
+
+    ("Cefazolina", "Infecção de Sítio Cirúrgico",
+     "adulto",     "2 g",           "dose única pré-op", "iv", 1, 1, "dose única 30-60 min antes",
+     True,  False, "Profilaxia padrão. Redosagem em cirurgias > 4h ou perda > 1,5 L.", "ANVISA-SCIH"),
+    ("Cefazolina", "Endocardite Infecciosa por Staphylococcus aureus",
+     "adulto",     "2 g",           "8/8h",        "iv",  28, 42, "4-6 semanas",
+     True,  False, "Alternativa à oxacilina para MSSA; menor penetração no SNC.", "GVS-MS"),
+
+    ("Ceftriaxona", "Meningite Bacteriana por Neisseria",
+     "adulto",     "2 g",           "12/12h",      "iv",   7, 14, "7-14 dias",
+     False, False, "Não ajustar em insuficiência renal isolada (excreção biliar 50%).", "PCDT-MENIN"),
+    ("Ceftriaxona", "Meningite Bacteriana por Neisseria",
+     "pediatrico", "100 mg/kg/dia", "12/12h",      "iv",   7, 14, "7-14 dias",
+     False, False, "Dose máxima 4g/dia.", "PCDT-MENIN"),
+    ("Ceftriaxona", "Pneumonia Adquirida na Comunidade (PAC)",
+     "adulto",     "1-2 g",         "24/24h",      "iv",   5,  7, "5-7 dias",
+     False, False, "PAC hospitalizada. 2g em pneumonia grave.", "SBI-PNEUM"),
+    ("Ceftriaxona", "Gonorreia",
+     "adulto",     "500 mg",        "dose única",  "im",   1,  1, "dose única",
+     False, False, "PCDT 2022: 500 mg IM dose única; associar azitromicina 1g oral.", "PCDT-IST"),
+    ("Ceftriaxona", "Febre Tifoide",
+     "adulto",     "2 g",           "24/24h",      "iv",  10, 14, "10-14 dias",
+     False, False, "Formas graves ou impossibilidade de via oral.", "PCDT-FEBRETIFO"),
+    ("Ceftriaxona", "Pielonefrite Aguda",
+     "adulto",     "1-2 g",         "24/24h",      "iv",   7, 14, "7-14 dias",
+     False, False, "Pielonefrite hospitalizada. Transição oral após 48-72h de melhora.", "SBI-ITU"),
+    ("Ceftriaxona", "Leptospirose",
+     "adulto",     "1 g",           "24/24h",      "iv",   7,  7, "7 dias",
+     False, False, "Alternativa à penicilina G cristalina; mais conveniente.", "PCDT-LEPTO"),
+
+    ("Ceftazidima", "Pneumonia Hospitalar",
+     "adulto",     "2 g",           "8/8h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Cobertura antipseudomonas. Ajuste em ClCr < 50 mL/min.", "ANVISA-IRAS"),
+
+    ("Cefepima", "Pneumonia Hospitalar",
+     "adulto",     "2 g",           "8/8h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Cobertura ampliada incluindo Pseudomonas. Ajuste em ClCr < 60.", "ANVISA-IRAS"),
+
+    ("Ceftazidima-avibactam", "Sepse por Klebsiella pneumoniae KPC",
+     "adulto",     "2,5 g",         "8/8h",        "iv",  14, 14, "14 dias",
+     True,  False, "Infusão 3h. Ajuste obrigatório: ClCr 31-50 → 1,25g 8/8h; 16-30 → 0,94g 12/12h.", "ANVISA-IRAS"),
+
+    ("Ertapenem", "Pielonefrite Aguda",
+     "adulto",     "1 g",           "24/24h",      "iv/im", 7, 14, "7-14 dias",
+     True,  False, "ESBL confirmado. Ajuste em ClCr < 30: 500mg/dia.", "SBI-ITU"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # CARBAPENENS
+    # ══════════════════════════════════════════════════════════════════
+    ("Meropenem", "Pneumonia Hospitalar",
+     "adulto",     "1-2 g",         "8/8h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Infusão estendida 3h aumenta %T>CIM em Pseudomonas MDR.", "ANVISA-IRAS"),
+    ("Meropenem", "Sepse por Gram-negativos",
+     "adulto",     "1-2 g",         "8/8h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Dose de 2g em infecções graves ou Pseudomonas.", "SBI-SEPSE"),
+    ("Meropenem", "Sepse por Klebsiella pneumoniae KPC",
+     "adulto",     "2 g",           "8/8h",        "iv",  14, 14, "14 dias",
+     True,  False, "Apenas em KPC com CIM ≤ 8 mg/L + combinação. Infusão estendida 3-4h.", "ANVISA-IRAS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # GLICOPEPTÍDEOS
+    # ══════════════════════════════════════════════════════════════════
+    ("Vancomicina", "Bacteremia por S. aureus MRSA",
+     "adulto",     "25-30 mg/kg",   "12/12h",      "iv",  14, 42, "14-42 dias conforme sítio",
+     True,  False, "AUC/CIM 400-600. Infusão 1-2h. Monitorar nível sérico (vale) ou AUC.", "ANVISA-SCIH"),
+    ("Vancomicina", "Meningite Bacteriana por Streptococcus pneumoniae",
+     "adulto",     "15 mg/kg",      "6/6h",        "iv",  10, 14, "10-14 dias",
+     True,  False, "Associar ceftriaxona. Manter nível vale 15-20 mg/L em meningite.", "PCDT-MENIN"),
+    ("Vancomicina", "Infecção por Clostridioides difficile (CDI)",
+     "adulto",     "125 mg",        "6/6h",        "oral",10, 14, "10 dias",
+     False, False, "Oral: NÃO tem absorção sistêmica — ação local no cólon. Formas graves.", "ANVISA-IRAS"),
+    ("Vancomicina", "Infecção por Clostridioides difficile (CDI)",
+     "adulto",     "500 mg",        "6/6h",        "oral",10, 14, "10 dias",
+     False, False, "Dose alta 500mg VO em formas complicadas/fulminantes.", "ANVISA-IRAS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # AMINOGLICOSÍDEOS
+    # ══════════════════════════════════════════════════════════════════
+    ("Gentamicina", "Endocardite por Enterococcus",
+     "adulto",     "3 mg/kg",       "24/24h",      "iv",  14, 28, "2-4 semanas (sinergia)",
+     True,  False, "Sinergismo com ampicilina em endocardite. Monitorar gentamicina vale < 1 mg/L.", "GVS-MS"),
+    ("Amicacina", "Tuberculose Resistente (MDR",
+     "adulto",     "15 mg/kg",      "24/24h",      "iv/im", 90, 180, "3-6 meses (fase intensiva MDR)",
+     True,  False, "Monitorar audiometria mensalmente. Ajuste em ClCr < 60.", "PCDT-TB"),
+    ("Estreptomicina", "Brucelose",
+     "adulto",     "1 g",           "24/24h",      "im",  14, 21, "2-3 semanas",
+     True,  False, "Associar doxiciclina 6 semanas. Monitorar função auditiva e renal.", "PCDT-BRUCELOSE"),
+    ("Estreptomicina", "Peste Bubônica",
+     "adulto",     "1 g",           "12/12h",      "im",  10, 10, "10 dias",
+     True,  False, "Tratamento padrão da peste; alternativa gentamicina IV.", "GVS-MS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # MACRÓLIDOS / AZÁLIDOS
+    # ══════════════════════════════════════════════════════════════════
+    ("Azitromicina", "Infecção por Chlamydia trachomatis",
+     "adulto",     "1 g",           "dose única",  "oral", 1,  1, "dose única",
+     False, True,  "IST clamídia: dose única 1g. Tratar parceiro simultaneamente.", "PCDT-IST"),
+    ("Azitromicina", "Pneumonia Atípica – Mycoplasma",
+     "adulto",     "500 mg",        "24/24h × 3d", "oral", 3,  5, "3-5 dias",
+     False, True,  "Dia 1: 500mg; dias 2-5: 250mg. Equivalente ao esquema de 3 dias.", "SBI-PNEUM"),
+    ("Azitromicina", "Coqueluche",
+     "adulto",     "500 mg",        "24/24h",      "oral", 5,  5, "5 dias",
+     False, True,  "Tratamento e quimioprofilaxia de contatos. Reduz excreção e transmissão.", "PCDT-COQUELUCHE"),
+    ("Azitromicina", "Coqueluche",
+     "pediatrico", "10 mg/kg",      "24/24h",      "oral", 5,  5, "5 dias",
+     False, True,  "< 6 meses: dose máxima 10 mg/kg/dia (não usar eritromicina em < 1 mês).", "PCDT-COQUELUCHE"),
+    ("Azitromicina", "Cólera",
+     "adulto",     "1 g",           "dose única",  "oral", 1,  1, "dose única",
+     False, True,  "Reduz duração da diarreia em 50%. Associar reidratação oral.", "PCDT-COLERA"),
+    ("Azitromicina", "Cólera",
+     "pediatrico", "20 mg/kg",      "dose única",  "oral", 1,  1, "dose única",
+     False, True,  "Dose máx 1g. Preferida em crianças e gestantes.", "PCDT-COLERA"),
+    ("Azitromicina", "Gonorreia",
+     "adulto",     "1 g",           "dose única",  "oral", 1,  1, "dose única",
+     False, True,  "Sempre associar à ceftriaxona 500mg IM — nunca usar isolada.", "PCDT-IST"),
+    ("Azitromicina", "Bartonellose",
+     "adulto",     "500 mg",        "24/24h",      "oral", 5,  5, "5 dias",
+     False, True,  "Linfadenopatia simples. Formas sistêmicas: doxiciclina por mais tempo.", "GVS-MS"),
+
+    ("Claritromicina", "Infecção por Helicobacter pylori",
+     "adulto",     "500 mg",        "12/12h",      "oral", 14, 14, "14 dias",
+     True,  True,  "Terapia tripla: IBP + amoxicilina + claritromicina. Resistência ~25% no BR.", "GVS-MS"),
+    ("Eritromicina", "Difteria",
+     "adulto",     "500 mg",        "6/6h",        "oral", 14, 14, "14 dias",
+     False, True,  "Alternativa à penicilina. Soro antidiftérico é o tratamento principal.", "PCDT-DIFTERIA"),
+    ("Eritromicina", "Difteria",
+     "pediatrico", "40-50 mg/kg/dia","6/6h",       "oral", 14, 14, "14 dias",
+     False, True,  "Dose máxima 2g/dia.", "PCDT-DIFTERIA"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # LINCOSAMIDAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Clindamicina", "Celulite Bacteriana",
+     "adulto",     "300-450 mg",    "8/8h",        "oral",  5,  7, "5-7 dias",
+     False, True,  "CA-MRSA suspeito. Verificar D-teste antes de usar.", "GVS-MS"),
+    ("Clindamicina", "Abscesso Pulmonar Bacteriano",
+     "adulto",     "600-900 mg",    "8/8h",        "iv",   21, 42, "3-6 semanas",
+     False, True,  "Excelente penetração pulmonar; cobertura anaeróbia. Transição oral após melhora.", "GVS-MS"),
+    ("Clindamicina", "Fasciíte Necrotizante",
+     "adulto",     "900 mg",        "8/8h",        "iv",   14, 28, "14-28 dias",
+     False, True,  "Inibição de toxina estreptocócica/estafilocócica. Sempre associar beta-lactâmico.", "GVS-MS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # TETRACICLINAS / GLICILCICLINAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Doxiciclina", "Febre Maculosa Brasileira",
+     "adulto",     "100 mg",        "12/12h",      "oral",  7,  7, "7 dias (mínimo até 3d afebril)",
+     False, True,  "INICIAR IMEDIATAMENTE na suspeita. Não aguardar confirmação laboratorial.", "PCDT-RICKETTSIA"),
+    ("Doxiciclina", "Febre Maculosa Brasileira",
+     "pediatrico", "2,2 mg/kg",     "12/12h",      "oral",  7,  7, "7 dias",
+     False, True,  "Pode usar em crianças < 8 anos em rickettsioses graves — benefício > risco.", "PCDT-RICKETTSIA"),
+    ("Doxiciclina", "Brucelose",
+     "adulto",     "100 mg",        "12/12h",      "oral", 42, 42, "6 semanas",
+     False, True,  "Associar rifampicina 600mg/dia por 6 semanas (esquema padrão OMS).", "PCDT-BRUCELOSE"),
+    ("Doxiciclina", "Leptospirose",
+     "adulto",     "100 mg",        "12/12h",      "oral",  7,  7, "7 dias",
+     False, True,  "Formas leves-moderadas. Quimioprofilaxia pós-exposição: 200mg dose única.", "PCDT-LEPTO"),
+    ("Doxiciclina", "Infecção por Chlamydia trachomatis",
+     "adulto",     "100 mg",        "12/12h",      "oral",  7,  7, "7 dias",
+     False, True,  "IST: 7 dias. LGV: 21 dias. Contraindicada na gravidez.", "PCDT-IST"),
+    ("Doxiciclina", "Sífilis (adquirida",
+     "adulto",     "100 mg",        "12/12h",      "oral", 14, 14, "14 dias",
+     False, True,  "Apenas em alergia à penicilina. Não usar em gestantes nem neurossífilis.", "PCDT-IST"),
+    ("Doxiciclina", "Cólera",
+     "adulto",     "300 mg",        "dose única",  "oral",  1,  1, "dose única",
+     False, True,  "Dose única 300mg em adultos. Reduz duração dos sintomas e eliminação bacteriana.", "PCDT-COLERA"),
+    ("Doxiciclina", "Pneumonia Atípica – Chlamydophila",
+     "adulto",     "100 mg",        "12/12h",      "oral", 10, 14, "10-14 dias",
+     False, True,  "Alternativa à azitromicina para pneumonia atípica.", "SBI-PNEUM"),
+
+    ("Tigeciclina", "Sepse por Klebsiella pneumoniae KPC",
+     "adulto",     "100 mg (ataque) depois 50 mg", "12/12h", "iv", 7, 14, "7-14 dias",
+     False, True,  "Dose de ataque 100mg, manutenção 50mg 12/12h. Nunca usar como monoterapia em bacteremia.", "ANVISA-IRAS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # FLUOROQUINOLONAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Ciprofloxacino", "Cistite Não Complicada",
+     "adulto",     "250-500 mg",    "12/12h",      "oral",  3,  3, "3 dias",
+     True,  False, "Reservar fluoroquinolonas — alta resistência local em E. coli (~18%). Verificar antibiograma.", "SBI-ITU"),
+    ("Ciprofloxacino", "Gastroenterite por Salmonella não-tífica",
+     "adulto",     "500 mg",        "12/12h",      "oral",  5,  7, "5-7 dias",
+     True,  False, "Apenas formas invasivas ou graves. Não tratar gastroenterite leve.", "GVS-MS"),
+    ("Ciprofloxacino", "Prostatite Bacteriana Aguda",
+     "adulto",     "500 mg",        "12/12h",      "oral", 28, 42, "4-6 semanas",
+     True,  False, "Excelente penetração no tecido prostático. Duração mínima 4 semanas.", "SBI-ITU"),
+    ("Ciprofloxacino", "Pneumonia Hospitalar",
+     "adulto",     "400 mg",        "8/8h",        "iv",   7, 14, "7-14 dias",
+     True,  False, "Apenas com sensibilidade confirmada (resistência ~25% em Pseudomonas no BR).", "ANVISA-IRAS"),
+
+    ("Levofloxacino", "Pneumonia Adquirida na Comunidade (PAC)",
+     "adulto",     "750 mg",        "24/24h",      "oral/iv", 5, 7, "5-7 dias",
+     True,  False, "PAC grave ou alergia à penicilina. Ajuste em ClCr < 50.", "SBI-PNEUM"),
+    ("Levofloxacino", "Infecção por Helicobacter pylori",
+     "adulto",     "500 mg",        "24/24h",      "oral", 14, 14, "14 dias",
+     True,  False, "Esquema resgate: IBP + amoxicilina + levofloxacino. 2ª linha.", "GVS-MS"),
+    ("Levofloxacino", "Tuberculose Resistente (MDR",
+     "adulto",     "750-1000 mg",   "24/24h",      "oral", 180, 540, "6-18 meses",
+     True,  False, "Componente central do esquema MDR-TB. Preferir 1000mg se tolerado.", "PCDT-TB"),
+    ("Moxifloxacino", "Pneumonia Adquirida na Comunidade (PAC)",
+     "adulto",     "400 mg",        "24/24h",      "oral/iv", 5, 7, "5-7 dias",
+     False, True,  "Não usar em ITU (sem excreção urinária ativa). PAC com anaeróbios.", "SBI-PNEUM"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # SULFAS / NITROIMIDAZÓIS / NITROFURANOS / POLIMIXINAS
+    # ══════════════════════════════════════════════════════════════════
+    ("Sulfametoxazol-trimetoprima (SMX-TMP)", "Cistite Não Complicada",
+     "adulto",     "800/160 mg",    "12/12h",      "oral",  3,  3, "3 dias",
+     True,  False, "Usar apenas com antibiograma — resistência 20-30% em E. coli no Brasil.", "SBI-ITU"),
+    ("Sulfametoxazol-trimetoprima (SMX-TMP)", "Coqueluche",
+     "adulto",     "800/160 mg",    "12/12h",      "oral",  7, 14, "7-14 dias",
+     True,  False, "Alternativa a macrólidos em alergia. Menos eficaz após 3ª semana da doença.", "PCDT-COQUELUCHE"),
+    ("Sulfametoxazol-trimetoprima (SMX-TMP)", "Nocardiose",
+     "adulto",     "800/160 mg",    "8/8h",        "oral", 180, 365, "6-12 meses",
+     True,  False, "Tratamento prolongado. Formas disseminadas: altas doses IV + combinação.", "GVS-MS"),
+    ("Sulfametoxazol-trimetoprima (SMX-TMP)", "Brucelose",
+     "pediatrico", "8/40 mg/kg/dia","12/12h",      "oral", 42, 42, "6 semanas",
+     True,  False, "Crianças < 8 anos (doxiciclina contraindicada). Associar rifampicina.", "PCDT-BRUCELOSE"),
+
+    ("Metronidazol", "Infecção por Clostridioides difficile (CDI)",
+     "adulto",     "500 mg",        "8/8h",        "oral", 10, 14, "10-14 dias",
+     False, True,  "Apenas formas leves. NÃO usar em formas graves (vancomicina é superior).", "ANVISA-IRAS"),
+    ("Metronidazol", "Tétano Acidental",
+     "adulto",     "500 mg",        "8/8h",        "iv",   7, 10, "7-10 dias",
+     False, True,  "Superior à penicilina — sem efeito antagonista ao GABA.", "PCDT-TETANO"),
+    ("Metronidazol", "Abscesso Pulmonar Bacteriano",
+     "adulto",     "500 mg",        "8/8h",        "iv/oral", 21, 42, "3-6 semanas",
+     False, True,  "Cobertura anaeróbia obrigatória. Associar beta-lactâmico para gram-negativos.", "GVS-MS"),
+    ("Metronidazol", "Peritonite Bacteriana",
+     "adulto",     "500 mg",        "8/8h",        "iv",  5, 14, "5-14 dias",
+     False, True,  "Cobertura de Bacteroides fragilis; associar a betalactâmico.", "GVS-MS"),
+    ("Metronidazol", "Infecção por Helicobacter pylori",
+     "adulto",     "500 mg",        "12/12h",      "oral", 14, 14, "14 dias",
+     False, True,  "Terapia quádrupla bismuto. Resistência ~35% no BR — confirmar sensibilidade.", "GVS-MS"),
+
+    ("Nitrofurantoína", "Cistite Não Complicada",
+     "adulto",     "100 mg (retard)", "12/12h",    "oral",  5,  7, "5-7 dias",
+     True,  False, "PRIMEIRA LINHA ITU não complicada. NÃO usar em ClCr < 45 mL/min ou pielonefrite.", "SBI-ITU"),
+    ("Nitrofurantoína", "Cistite Não Complicada",
+     "gestante",   "100 mg (retard)", "12/12h",    "oral",  5,  7, "5-7 dias",
+     True,  False, "Segura no 1º/2º trimestre. EVITAR no 3º trimestre (risco de hemólise neonatal).", "SBI-ITU"),
+
+    ("Fosfomicina", "Cistite Não Complicada",
+     "adulto",     "3 g",           "dose única",  "oral",  1,  1, "dose única",
+     False, False, "Dose única granulado oral. Boa opção para ESBL; crescente uso no Brasil.", "SBI-ITU"),
+    ("Fosfomicina", "Cistite Não Complicada",
+     "gestante",   "3 g",           "dose única",  "oral",  1,  1, "dose única",
+     False, False, "Segura na gestação. Opção quando nitrofurantoína contraindicada.", "SBI-ITU"),
+
+    ("Polimixina B", "Sepse por Klebsiella pneumoniae KPC",
+     "adulto",     "2,5 mg/kg/dia (dividida 12/12h)", "12/12h", "iv", 10, 14, "10-14 dias",
+     True,  False, "Monitorar creatinina diariamente. Sempre em combinação; evitar monoterapia.", "ANVISA-IRAS"),
+    ("Polimixina B", "Infecção por Acinetobacter baumannii",
+     "adulto",     "2,5 mg/kg/dia", "12/12h",      "iv",  10, 14, "10-14 dias",
+     True,  False, "CRAB: última linha. Associar rifampicina ou tigeciclina.", "ANVISA-IRAS"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # OXAZOLIDINONAS / LIPOPEPTÍDEOS
+    # ══════════════════════════════════════════════════════════════════
+    ("Linezolida", "Bacteremia por S. aureus MRSA",
+     "adulto",     "600 mg",        "12/12h",      "oral/iv", 14, 28, "14-28 dias",
+     False, False, "Monitorar CBC semanalmente — mielossupressão em tratamentos > 2 semanas.", "ANVISA-SCIH"),
+    ("Linezolida", "Tuberculose Resistente (MDR",
+     "adulto",     "600 mg",        "24/24h",      "oral", 180, 540, "6-18 meses",
+     False, False, "Dose 300mg/dia reduz toxicidade em MDR-TB sem perda de eficácia. Monitorar neuropatia.", "PCDT-TB"),
+    ("Linezolida", "Infecção de Corrente Sanguínea por Enterococcus Vancomicina-Resistente",
+     "adulto",     "600 mg",        "12/12h",      "oral/iv", 14, 28, "14-28 dias",
+     False, False, "VRE bacteremia; sem atividade bactericida. Associar em endocardite.", "ANVISA-IRAS"),
+
+    ("Daptomicina", "Bacteremia por S. aureus MRSA",
+     "adulto",     "6-10 mg/kg",    "24/24h",      "iv",  14, 42, "14-42 dias",
+     True,  False, "Bacteremia/endocardite: 6 mg/kg. Endocardite valva dir.: 10 mg/kg. NÃO usar em pneumonia.", "ANVISA-SCIH"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # RIFAMICINAS / TB / HANSENÍASE
+    # ══════════════════════════════════════════════════════════════════
+    ("Rifampicina", "Tuberculose Pulmonar",
+     "adulto",     "10 mg/kg (máx 600 mg)", "24/24h jejum", "oral", 180, 180, "6 meses",
+     False, True,  "Esquema RHZE: fase intensiva 2m + fase manutenção 4m. Hepatotoxicidade monitorar.", "PCDT-TB"),
+    ("Rifampicina", "Tuberculose Pulmonar",
+     "pediatrico", "10-20 mg/kg",   "24/24h",      "oral", 180, 180, "6 meses",
+     False, True,  "Dose máxima 600mg/dia.", "PCDT-TB"),
+    ("Rifampicina", "Hanseníase (Lepra)",
+     "adulto",     "600 mg",        "1x/mês supervisionado", "oral", 180, 365, "PB: 6 meses / MB: 12 meses",
+     False, True,  "Esquema PQT: mensal supervisionado + diário autoadministrado.", "PCDT-HANSENR"),
+    ("Rifampicina", "Meningite Bacteriana por Neisseria",
+     "adulto",     "600 mg",        "12/12h",      "oral",  2,  2, "2 dias",
+     False, True,  "Quimioprofilaxia de contatos íntimos. Iniciar nas primeiras 24h.", "PCDT-MENIN"),
+    ("Rifampicina", "Meningite Bacteriana por Neisseria",
+     "pediatrico", "10 mg/kg",      "12/12h",      "oral",  2,  2, "2 dias",
+     False, True,  "< 1 mês: 5 mg/kg 12/12h. Dose máxima 600mg/dia.", "PCDT-MENIN"),
+
+    ("Isoniazida (INH)", "Tuberculose Pulmonar",
+     "adulto",     "10 mg/kg (máx 300 mg)", "24/24h", "oral", 180, 180, "6 meses",
+     False, True,  "Associar piridoxina 25-50mg/dia para prevenir neuropatia periférica.", "PCDT-TB"),
+    ("Isoniazida (INH)", "Tuberculose Pulmonar",
+     "pediatrico", "10 mg/kg",      "24/24h",      "oral", 180, 180, "6 meses",
+     False, True,  "Dose máxima 300mg/dia.", "PCDT-TB"),
+    ("Pirazinamida", "Tuberculose Pulmonar",
+     "adulto",     "25 mg/kg (máx 2 g)", "24/24h",  "oral",  60,  60, "2 meses (fase intensiva)",
+     False, True,  "Fase intensiva apenas (2 meses). Hiperuricemia frequente; artralgia.", "PCDT-TB"),
+    ("Etambutol", "Tuberculose Pulmonar",
+     "adulto",     "15-25 mg/kg",   "24/24h",      "oral",  60,  60, "2 meses (fase intensiva)",
+     True,  False, "Monitorar acuidade visual e visão de cores mensalmente. Reduzir em ClCr < 30.", "PCDT-TB"),
+
+    ("Dapsona", "Hanseníase (Lepra)",
+     "adulto",     "100 mg",        "24/24h",      "oral", 180, 365, "PB: 6 meses / MB: 12 meses",
+     False, False, "Autoadministrado diário. Monitorar hemograma (metemoglobinemia, hemólise).", "PCDT-HANSENR"),
+    ("Clofazimina", "Hanseníase (Lepra)",
+     "adulto",     "300 mg (supervisionado) + 50 mg (diário)", "mensal + diário", "oral", 365, 365, "12 meses (MB)",
+     False, False, "Apenas hanseníase multibacilar. Pigmentação cutânea avermelhada é esperada.", "PCDT-HANSENR"),
+
+    # ══════════════════════════════════════════════════════════════════
+    # CLORANFENICOL / FIDAXOMICINA
+    # ══════════════════════════════════════════════════════════════════
+    ("Cloranfenicol", "Febre Maculosa Brasileira",
+     "pediatrico", "50-75 mg/kg/dia","6/6h",       "iv/oral", 7, 7, "7 dias",
+     False, True,  "Alternativa à doxiciclina em < 8 anos. Monitorar hemograma.", "PCDT-RICKETTSIA"),
+    ("Cloranfenicol", "Febre Tifoide",
+     "adulto",     "500 mg",        "6/6h",        "oral", 14, 14, "14 dias",
+     False, True,  "Alternativa histórica com bom acesso em áreas de escassez.", "PCDT-FEBRETIFO"),
+
+    ("Fidaxomicina", "Infecção por Clostridioides difficile (CDI)",
+     "adulto",     "200 mg",        "12/12h",      "oral", 10, 10, "10 dias",
+     False, False, "Superior à vancomicina oral na prevenção de recorrência (NNT ~10).", "ANVISA-IRAS"),
+]

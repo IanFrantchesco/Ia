@@ -138,6 +138,90 @@ CREATE INDEX IF NOT EXISTS idx_patologias_cid10         ON patologias(cid10);
 -- ------------------------------------------------------------
 -- VIEWS ÚTEIS
 -- ------------------------------------------------------------
+-- ------------------------------------------------------------
+-- POSOLOGIA
+-- Fonte: PCDTs MS, bulas ANVISA, SBI/SBPT diretrizes
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS posologia (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    antibiotico_id      INTEGER NOT NULL REFERENCES antibioticos(id),
+    patologia_id        INTEGER REFERENCES patologias(id),   -- NULL = posologia geral do ATB
+    populacao           TEXT NOT NULL CHECK(populacao IN
+                            ('adulto','pediatrico','gestante','idoso','insuf_renal','insuf_hepatica')),
+    dose_unitaria       TEXT NOT NULL,   -- ex: "500 mg", "1 g", "25 mg/kg"
+    frequencia          TEXT NOT NULL,   -- ex: "8/8h", "12/12h", "1x/dia"
+    via                 TEXT NOT NULL,   -- ex: "oral", "iv", "im"
+    duracao_min_dias    INTEGER,
+    duracao_max_dias    INTEGER,
+    duracao_texto       TEXT,            -- ex: "6 semanas", "14 dias", "dose única"
+    ajuste_renal        BOOLEAN DEFAULT 0,
+    ajuste_hepatico     BOOLEAN DEFAULT 0,
+    observacoes         TEXT,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- ------------------------------------------------------------
+-- INTERAÇÕES MEDICAMENTOSAS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS interacoes_medicamentosas (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    antibiotico_id          INTEGER NOT NULL REFERENCES antibioticos(id),
+    medicamento_interagente TEXT NOT NULL,
+    classe_interagente      TEXT,
+    mecanismo               TEXT,
+    gravidade               TEXT NOT NULL CHECK(gravidade IN
+                                ('leve','moderada','grave','contraindicada')),
+    efeito_clinico          TEXT NOT NULL,
+    conduta                 TEXT NOT NULL,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_posologia_atb       ON posologia(antibiotico_id);
+CREATE INDEX IF NOT EXISTS idx_posologia_pat       ON posologia(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_interacao_atb       ON interacoes_medicamentosas(antibiotico_id);
+
+-- ------------------------------------------------------------
+-- VIEW POSOLOGIA COMPLETA
+-- ------------------------------------------------------------
+CREATE VIEW IF NOT EXISTS v_posologia_completa AS
+SELECT
+    a.nome_generico         AS antibiotico,
+    p2.nome                 AS patologia,
+    po.populacao,
+    po.dose_unitaria,
+    po.frequencia,
+    po.via,
+    po.duracao_texto,
+    po.duracao_min_dias,
+    po.duracao_max_dias,
+    po.ajuste_renal,
+    po.ajuste_hepatico,
+    po.observacoes,
+    fo.sigla                AS fonte
+FROM posologia po
+JOIN antibioticos a  ON a.id  = po.antibiotico_id
+LEFT JOIN patologias p2 ON p2.id = po.patologia_id
+LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+ORDER BY a.nome_generico, po.populacao;
+
+-- ------------------------------------------------------------
+-- VIEW INTERAÇÕES
+-- ------------------------------------------------------------
+CREATE VIEW IF NOT EXISTS v_interacoes AS
+SELECT
+    a.nome_generico         AS antibiotico,
+    i.medicamento_interagente,
+    i.classe_interagente,
+    i.gravidade,
+    i.efeito_clinico,
+    i.conduta,
+    fo.sigla                AS fonte
+FROM interacoes_medicamentosas i
+JOIN antibioticos a ON a.id = i.antibiotico_id
+LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+ORDER BY i.gravidade DESC, a.nome_generico;
+
+-- ------------------------------------------------------------
 CREATE VIEW IF NOT EXISTS v_tratamento_completo AS
 SELECT
     p.nome                          AS patologia,

@@ -16,6 +16,8 @@ from data_fontes_bacterias_antibioticos import (
 )
 from data_patologias import CATEGORIAS_PATOLOGIAS, PATOLOGIAS
 from data_eficacia import EFICACIA
+from data_posologia import POSOLOGIA
+from data_interacoes import INTERACOES
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -230,12 +232,68 @@ def insert_patologia_bacteria_links(conn):
         )
 
 
+def insert_posologia(conn):
+    inserted = skipped = 0
+    for rec in POSOLOGIA:
+        (atb_nome, pat_substr, pop, dose, freq, via,
+         dur_min, dur_max, dur_txt, aj_renal, aj_hep, obs, fonte_sigla) = rec
+        try:
+            atb_id = get_id(conn, "antibioticos", "nome_generico", atb_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO posologia
+               (antibiotico_id,patologia_id,populacao,dose_unitaria,frequencia,via,
+                duracao_min_dias,duracao_max_dias,duracao_texto,
+                ajuste_renal,ajuste_hepatico,observacoes,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (atb_id, pat_id, pop, dose, freq, via,
+             dur_min, dur_max, dur_txt,
+             int(aj_renal), int(aj_hep), obs, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_interacoes(conn):
+    inserted = skipped = 0
+    for rec in INTERACOES:
+        (atb_nome, med_inter, classe_inter,
+         mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
+        try:
+            atb_id = get_id(conn, "antibioticos", "nome_generico", atb_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO interacoes_medicamentosas
+               (antibiotico_id,medicamento_interagente,classe_interagente,
+                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (atb_id, med_inter, classe_inter,
+             mecanismo, gravidade, efeito, conduta, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
 def print_summary(conn):
     tables = [
         "fontes_oficiais", "familias_bacterianas", "bacterias",
         "classes_antibioticos", "antibioticos",
         "categorias_patologias", "patologias",
         "patologia_bacteria", "eficacia_antibiotico",
+        "posologia", "interacoes_medicamentosas",
     ]
     print("\n── Resumo do banco de dados ──────────────────────")
     for t in tables:
@@ -284,11 +342,21 @@ def build():
     print("Inserindo dados de eficácia de antibióticos...")
     inserted, skipped = insert_eficacia(conn)
     conn.commit()
-    print(f"  → {inserted} registros inseridos, {skipped} ignorados")
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
 
     print("Criando vínculos patologia ↔ bactéria...")
     insert_patologia_bacteria_links(conn)
     conn.commit()
+
+    print("Inserindo posologia...")
+    inserted, skipped = insert_posologia(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo interações medicamentosas...")
+    inserted, skipped = insert_interacoes(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridas, {skipped} ignoradas")
 
     print_summary(conn)
     conn.close()

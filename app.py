@@ -274,39 +274,83 @@ def bact_detalhe(patologia_id: int):
                     (bact_id_row["id"],),
                 ).fetchall()
 
-    def score_atb(r):
+    def enrich_atb(r):
         ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
         ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
         seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
         sus = 100 if r["disponivel_sus"] else 0
+
+        atb_id = db.execute(
+            "SELECT id FROM antibioticos WHERE nome_generico = ?",
+            (r["nome_generico"],),
+        ).fetchone()
+        atb_id = atb_id["id"] if atb_id else None
+
+        posologias = []
+        interacoes = []
+        if atb_id:
+            pos_rows = db.execute(
+                """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
+                          po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
+                          po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
+                          fo.sigla AS fonte
+                   FROM posologia po
+                   LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                   WHERE po.antibiotico_id = ?
+                     AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                   ORDER BY po.patologia_id DESC, po.populacao""",
+                (atb_id, pat["id"]),
+            ).fetchall()
+            posologias = [dict(p) for p in pos_rows]
+
+            inter_rows = db.execute(
+                """SELECT i.medicamento_interagente, i.classe_interagente,
+                          i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
+                          fo.sigla AS fonte
+                   FROM interacoes_medicamentosas i
+                   LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                   WHERE i.antibiotico_id = ?
+                   ORDER BY
+                     CASE i.gravidade
+                       WHEN 'contraindicada' THEN 1
+                       WHEN 'grave'          THEN 2
+                       WHEN 'moderada'       THEN 3
+                       WHEN 'leve'           THEN 4
+                     END""",
+                (atb_id,),
+            ).fetchall()
+            interacoes = [dict(i) for i in inter_rows]
+
         return {
-            "nome_generico":    r["nome_generico"],
-            "nome_comercial":   r["nome_comercial"],
-            "via":              r["via_administracao"],
-            "disponivel_sus":   bool(r["disponivel_sus"]),
-            "classe":           r["classe"],
-            "bacteria":         r["bacteria"],
-            "eficacia_pct":     r["eficacia_pct"],
-            "linha_tratamento": r["linha_tratamento"],
-            "nivel_evidencia":  r["nivel_evidencia"],
+            "nome_generico":      r["nome_generico"],
+            "nome_comercial":     r["nome_comercial"],
+            "via":                r["via_administracao"],
+            "disponivel_sus":     bool(r["disponivel_sus"]),
+            "classe":             r["classe"],
+            "bacteria":           r["bacteria"],
+            "eficacia_pct":       r["eficacia_pct"],
+            "linha_tratamento":   r["linha_tratamento"],
+            "nivel_evidencia":    r["nivel_evidencia"],
             "resistencia_br_pct": r["resistencia_br_pct"],
-            "consideracoes":    r["consideracoes"],
-            "fonte":            r["fonte"],
-            "fonte_nome":       r["fonte_nome"],
-            "fonte_ano":        r["fonte_ano"],
+            "consideracoes":      r["consideracoes"],
+            "fonte":              r["fonte"],
+            "fonte_nome":         r["fonte_nome"],
+            "fonte_ano":          r["fonte_ano"],
             "radar": {
-                "eficacia":   round(r["eficacia_pct"] or 0, 1),
-                "seguranca":  round(seg, 1),
-                "evidencia":  ev,
+                "eficacia":       round(r["eficacia_pct"] or 0, 1),
+                "seguranca":      round(seg, 1),
+                "evidencia":      ev,
                 "primeira_linha": ln,
-                "acesso_sus": sus,
+                "acesso_sus":     sus,
             },
+            "posologias":         posologias,
+            "interacoes":         interacoes,
         }
 
     return {
-        "patologia": dict(pat),
-        "bacterias": [dict(b) for b in bacterias],
-        "top3_antibioticos": [score_atb(r) for r in antibioticos],
+        "patologia":        dict(pat),
+        "bacterias":        [dict(b) for b in bacterias],
+        "top3_antibioticos": [enrich_atb(r) for r in antibioticos],
     }
 
 

@@ -81,14 +81,22 @@ Responda em português brasileiro."""
 
 
 def chamar_gemini(prompt: str) -> str:
-    import google.generativeai as genai
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction="Você é economista especialista em história econômica do Brasil. Responda sempre em português brasileiro.",
+    import requests as req
+    key = os.getenv("GOOGLE_API_KEY")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models"
+        f"/gemini-1.5-flash:generateContent?key={key}"
     )
-    resp = model.generate_content(prompt)
-    return resp.text
+    body = {
+        "system_instruction": {
+            "parts": [{"text": "Você é economista especialista em história econômica do Brasil. Responda sempre em português brasileiro."}]
+        },
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 2000},
+    }
+    r = req.post(url, json=body, timeout=60)
+    r.raise_for_status()
+    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def chamar_anthropic(prompt: str) -> str:

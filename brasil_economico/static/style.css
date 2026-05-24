@@ -341,17 +341,7 @@ main {
   font-weight: 600;
   margin-bottom: 4px;
 }
-.bar-chart-sub { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; }
-.bar-chart-info {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  background: rgba(255,255,255,0.03);
-  border-left: 2px solid rgba(255,255,255,0.1);
-  padding: 6px 10px;
-  border-radius: 0 6px 6px 0;
-  margin-bottom: 14px;
-}
+.bar-chart-sub { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 16px; }
 .bar-chart-wrap { position: relative; height: 160px; }
 
 /* ── AI Panel ───────────────────────────────────── */

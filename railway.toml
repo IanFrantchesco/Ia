@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python monitor_ep.py"
+cronSchedule = "0 8 * * 1"
+restartPolicyType = "NEVER"

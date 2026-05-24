@@ -21,54 +21,108 @@ const RADAR_METRICS = [
   { key: 'media_fbcf',             label: 'Investimento\n/PIB',    higherBetter: true,  min: 12,   max: 24,    log: false },
 ];
 
-// Bar chart categories
+// Bar chart categories — cada métrica tem uma explicação breve
 const CHART_CATEGORIES = [
   {
     title: 'Crescimento Econômico', icon: '📈',
     metrics: [
-      { key: 'media_crescimento_pib', label: 'Cresc. PIB real', unit: '%' },
-      { key: 'media_pib_per_capita',  label: 'PIB per capita',  unit: 'USD' },
-      { key: 'media_fbcf',            label: 'Invest. (FBCF/PIB)', unit: '%' },
+      {
+        key: 'media_crescimento_pib', label: 'Cresc. PIB real', unit: '%',
+        info: 'Variação do PIB descontada a inflação. Mede o quanto a economia cresceu de verdade no período.',
+      },
+      {
+        key: 'media_pib_per_capita', label: 'PIB per capita', unit: 'USD',
+        info: 'Riqueza média por habitante em dólares. Indica o nível de desenvolvimento econômico do país.',
+      },
+      {
+        key: 'media_fbcf', label: 'Invest. (FBCF/PIB)', unit: '%',
+        info: 'Formação Bruta de Capital Fixo como % do PIB. Mede o quanto foi investido em máquinas, obras e equipamentos — base do crescimento futuro.',
+      },
     ],
   },
   {
     title: 'Estabilidade de Preços', icon: '💰',
     metrics: [
-      { key: 'media_inflacao', label: 'Inflação',  unit: '%' },
-      { key: 'media_selic',    label: 'SELIC',     unit: '%' },
-      { key: 'media_cambio',   label: 'BRL/USD',   unit: '' },
+      {
+        key: 'media_inflacao', label: 'Inflação', unit: '%',
+        info: 'Aumento geral dos preços ao consumidor (IPCA oficial pós-1995; estimativas históricas antes). Inflação alta corrói o poder de compra da população.',
+      },
+      {
+        key: 'media_selic', label: 'SELIC', unit: '%',
+        info: 'Taxa básica de juros definida pelo Banco Central. Influencia o custo do crédito, investimentos e o controle da inflação.',
+      },
+      {
+        key: 'media_cambio', label: 'Câmbio BRL/USD', unit: '',
+        info: 'Quantos reais são necessários para comprar 1 dólar (média do mandato). Câmbio alto encarece importações e pode estimular exportações.',
+      },
     ],
   },
   {
     title: 'Emprego e Renda', icon: '👷',
     metrics: [
-      { key: 'media_desemprego',   label: 'Desemprego',     unit: '%' },
-      { key: 'media_salario_min',  label: 'Sal. mín. real', unit: 'R$' },
+      {
+        key: 'media_desemprego', label: 'Desemprego', unit: '%',
+        info: 'Percentual da população economicamente ativa sem trabalho. Inclui estimativas históricas para períodos sem pesquisa formal (PNAD).',
+      },
+      {
+        key: 'media_salario_min', label: 'Sal. mínimo real', unit: 'R$',
+        info: 'Salário mínimo corrigido pela inflação em valores de hoje (R$ de 2024). Indica o poder de compra real do trabalhador ao longo do tempo.',
+      },
     ],
   },
   {
     title: 'Equilíbrio Fiscal', icon: '⚖️',
     metrics: [
-      { key: 'media_divida_pib',          label: 'Dívida bruta/PIB',   unit: '%' },
-      { key: 'media_resultado_primario',  label: 'Resultado primário', unit: '% PIB' },
+      {
+        key: 'media_divida_pib', label: 'Dívida bruta/PIB', unit: '%',
+        info: 'Total da dívida pública como proporção do PIB. Valores altos indicam maior vulnerabilidade fiscal e pressão sobre os juros.',
+      },
+      {
+        key: 'media_resultado_primario', label: 'Resultado primário', unit: '% PIB',
+        info: 'Diferença entre receitas e despesas do governo, excluindo juros da dívida. Positivo (superávit) = governo gasta menos do que arrecada.',
+      },
     ],
   },
   {
     title: 'Setor Externo', icon: '🌍',
     metrics: [
-      { key: 'media_balanca_comercial', label: 'Balança comercial', unit: 'bi USD' },
-      { key: 'media_reservas',          label: 'Reservas intern.',  unit: 'bi USD' },
-      { key: 'media_ied',               label: 'IED',               unit: 'bi USD' },
+      {
+        key: 'media_balanca_comercial', label: 'Balança comercial', unit: 'bi USD',
+        info: 'Diferença entre exportações e importações de bens. Positivo significa que o Brasil vendeu mais ao exterior do que comprou.',
+      },
+      {
+        key: 'media_reservas', label: 'Reservas internacionais', unit: 'bi USD',
+        info: 'Dólares e outros ativos guardados pelo Banco Central. Funcionam como colchão de segurança em crises cambiais.',
+      },
+      {
+        key: 'media_ied', label: 'IED (Invest. Estrangeiro)', unit: 'bi USD',
+        info: 'Capital estrangeiro investido diretamente em empresas e projetos no Brasil. Indica confiança do mercado externo na economia.',
+      },
     ],
   },
   {
     title: 'Desenvolvimento Social', icon: '🤝',
     metrics: [
-      { key: 'media_idh',              label: 'IDH',                unit: ''     },
-      { key: 'media_gini',             label: 'Gini',               unit: ''     },
-      { key: 'media_pobreza',          label: 'Pobreza extrema',    unit: '%'    },
-      { key: 'media_esperanca_vida',   label: 'Esp. de vida',       unit: 'anos' },
-      { key: 'media_mortalidade',      label: 'Mort. infantil',     unit: '/mil' },
+      {
+        key: 'media_idh', label: 'IDH', unit: '',
+        info: 'Índice de Desenvolvimento Humano do PNUD (0 a 1). Combina três dimensões: renda per capita, educação e expectativa de vida.',
+      },
+      {
+        key: 'media_gini', label: 'Coeficiente de Gini', unit: '',
+        info: 'Mede a desigualdade de renda (0 = igualdade total; 1 = desigualdade máxima). Quanto menor, mais equilibrada é a distribuição de renda.',
+      },
+      {
+        key: 'media_pobreza', label: 'Pobreza extrema', unit: '%',
+        info: 'Percentual da população vivendo com menos de US$ 2,15 por dia (linha de pobreza extrema do Banco Mundial).',
+      },
+      {
+        key: 'media_esperanca_vida', label: 'Esperança de vida', unit: 'anos',
+        info: 'Quantos anos, em média, uma pessoa nascida naquele período viverá. Reflete qualidade do sistema de saúde, saneamento e condições de vida.',
+      },
+      {
+        key: 'media_mortalidade', label: 'Mortalidade infantil', unit: '/mil',
+        info: 'Número de mortes de crianças menores de 1 ano para cada 1.000 nascidos vivos. Um dos indicadores sociais mais sensíveis ao desenvolvimento.',
+      },
     ],
   },
 ];
@@ -95,7 +149,6 @@ async function init() {
   }
 
   document.getElementById('compare-btn').addEventListener('click', compare);
-  document.getElementById('ai-btn').addEventListener('click', generateAnalysis);
 
   Chart.defaults.color = '#8892A4';
   Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
@@ -139,11 +192,13 @@ async function compare() {
   renderSummaryCards();
   renderRadarChart();
   renderBarCharts();
-  resetAiPanel();
 
   document.getElementById('results').hidden = false;
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   setLoading(false);
+
+  // Gera análise automaticamente
+  generateAnalysis();
 }
 
 // ── Summary Cards ──────────────────────────────────────────────────────────
@@ -152,10 +207,10 @@ function renderSummaryCards() {
   const row = document.getElementById('summary-row');
   row.innerHTML = resumos.map((r, i) => {
     const color = COLORS[i];
-    const pib   = fmtNum(r.media_crescimento_pib, 2, '%');
-    const infl  = fmtNum(r.media_inflacao, 2, '%');
+    const pib    = fmtNum(r.media_crescimento_pib, 2, '%');
+    const infl   = fmtNum(r.media_inflacao, 2, '%');
     const desemp = fmtNum(r.media_desemprego, 1, '%');
-    const idh   = r.media_idh ? r.media_idh.toFixed(3) : 'N/D';
+    const idh    = r.media_idh ? r.media_idh.toFixed(3) : 'N/D';
     const pibCl  = r.media_crescimento_pib > 0 ? 'positive' : 'negative';
 
     return `
@@ -273,12 +328,12 @@ function renderRadarChart() {
 function renderBarCharts() {
   const grid = document.getElementById('bar-grid');
   grid.innerHTML = '';
-  destroyChart('bar_');
+  destroyChart('chart-');
 
   CHART_CATEGORIES.forEach(cat => {
     cat.metrics.forEach(m => {
       const vals = resumos.map(r => r[m.key]);
-      if (vals.every(v => v == null)) return; // skip if all null
+      if (vals.every(v => v == null)) return;
 
       const id = `chart-${m.key}`;
       const card = document.createElement('div');
@@ -286,6 +341,7 @@ function renderBarCharts() {
       card.innerHTML = `
         <div class="bar-chart-title">${cat.icon} <span>${esc(m.label)}</span></div>
         <div class="bar-chart-sub">${esc(cat.title)}${m.unit ? ' · ' + esc(m.unit) : ''}</div>
+        ${m.info ? `<div class="bar-chart-info">${esc(m.info)}</div>` : ''}
         <div class="bar-chart-wrap"><canvas id="${id}"></canvas></div>
       `;
       grid.appendChild(card);
@@ -303,10 +359,7 @@ function renderBarCharts() {
       const ctx = card.querySelector(`#${id}`).getContext('2d');
       chartInstances[id] = new Chart(ctx, {
         type: 'bar',
-        data: {
-          labels: ['Média do mandato'],
-          datasets,
-        },
+        data: { labels: ['Média do mandato'], datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -341,13 +394,13 @@ function renderBarCharts() {
 // ── AI Analysis ────────────────────────────────────────────────────────────
 
 async function generateAnalysis() {
-  const btn = document.getElementById('ai-btn');
-  btn.disabled = true;
-  btn.innerHTML = `<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Gerando análise...`;
+  const btn     = document.getElementById('ai-btn');
+  const result  = document.getElementById('ai-result');
+  const content = document.getElementById('ai-content');
 
-  const resultDiv = document.getElementById('ai-result');
-  const content   = document.getElementById('ai-content');
-  resultDiv.hidden = true;
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner" style="width:16px;height:16px;border-width:2px;margin:0"></div> Gerando análise…`;
+  result.hidden = true;
 
   try {
     const data = await apiFetch('/api/analise', {
@@ -355,24 +408,28 @@ async function generateAnalysis() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ presidentes: resumos }),
     });
-
     content.innerHTML = marked.parse(data.analise);
-    resultDiv.hidden = false;
+    result.hidden = false;
   } catch (err) {
+    const isKeyErr = (err.message || '').includes('ANTHROPIC_API_KEY');
     content.innerHTML = `
       <div class="ai-error">
         <strong>⚠ Análise por IA indisponível</strong><br><br>
-        ${esc(err.message || 'Erro ao gerar análise.')}
-        ${err.message?.includes('ANTHROPIC_API_KEY')
-          ? '<br><br>Para ativar: defina a variável de ambiente <code>ANTHROPIC_API_KEY</code> com sua chave da Anthropic.'
-          : ''}
+        ${isKeyErr
+          ? `Para ativar, adicione a variável de ambiente <code>ANTHROPIC_API_KEY</code> no Railway:<br>
+             <strong>Settings → Variables → New Variable</strong><br>
+             Nome: <code>ANTHROPIC_API_KEY</code> · Valor: sua chave de <a href="https://console.anthropic.com" target="_blank" style="color:var(--c1)">console.anthropic.com</a>`
+          : esc(err.message || 'Erro ao gerar análise.')}
       </div>`;
-    resultDiv.hidden = false;
+    result.hidden = false;
   }
 
   btn.disabled = false;
   btn.innerHTML = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+    </svg>
     Regerar Análise`;
 }
 
@@ -404,15 +461,6 @@ function esc(str) {
 function setLoading(on) {
   document.getElementById('loading').hidden = !on;
   if (on) document.getElementById('results').hidden = true;
-}
-
-function resetAiPanel() {
-  document.getElementById('ai-result').hidden = true;
-  const btn = document.getElementById('ai-btn');
-  btn.disabled = false;
-  btn.innerHTML = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-    Gerar Análise Comparativa`;
 }
 
 function destroyChart(prefix) {

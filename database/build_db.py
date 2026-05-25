@@ -19,6 +19,15 @@ from data_eficacia import EFICACIA
 from data_posologia import POSOLOGIA
 from data_interacoes import INTERACOES
 from data_tratamento_padrao_ouro import TRATAMENTO_PADRAO_OURO
+from data_virais_agentes import (
+    FONTES_VIRAIS, FAMILIAS_VIRAIS, VIRUS,
+    CLASSES_ANTIVIRAIS, ANTIVIRAIS,
+)
+from data_virais_patologias import CATEGORIAS_VIRAIS, PATOLOGIAS_VIRAIS
+from data_virais_eficacia import EFICACIA_VIRAL
+from data_virais_posologia import POSOLOGIA_VIRAL
+from data_virais_interacoes import INTERACOES_VIRAIS
+from data_virais_tratamento import TRATAMENTO_PADRAO_OURO_VIRAL
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -288,6 +297,209 @@ def insert_interacoes(conn):
     return inserted, skipped
 
 
+def insert_fontes_virais(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO fontes_oficiais (sigla,nome,orgao,tipo,url,ano,descricao) VALUES (?,?,?,?,?,?,?)",
+        FONTES_VIRAIS,
+    )
+
+
+def insert_familias_virais(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO familias_virais (nome,grupo) VALUES (?,?)",
+        FAMILIAS_VIRAIS,
+    )
+
+
+def insert_virus(conn):
+    for row in VIRUS:
+        nome_cient, nome_com, familia_nome, tipo_an, envelope, transmissao, reservatorio = row
+        familia_id = get_id(conn, "familias_virais", "nome", familia_nome)
+        conn.execute(
+            """INSERT OR IGNORE INTO virus
+               (nome_cientifico,nome_comum,familia_id,tipo_acido_nucleico,envelope,transmissao_principal,reservatorio)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_cient, nome_com, familia_id, tipo_an, envelope, transmissao, reservatorio),
+        )
+
+
+def insert_classes_antivirais(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO classes_antivirais (nome,mecanismo_acao,alvo_celular) VALUES (?,?,?)",
+        CLASSES_ANTIVIRAIS,
+    )
+
+
+def insert_antivirais(conn):
+    for row in ANTIVIRAIS:
+        nome_gen, nome_com, classe_nome, via, sus, anvisa, obs = row
+        classe_id = get_id(conn, "classes_antivirais", "nome", classe_nome)
+        conn.execute(
+            """INSERT OR IGNORE INTO antivirais
+               (nome_generico,nome_comercial,classe_id,via_administracao,disponivel_sus,anvisa_registrado,observacoes)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_gen, nome_com, classe_id, via, int(sus), int(anvisa), obs),
+        )
+
+
+def insert_categorias_virais(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO categorias_patologias (nome,sistema) VALUES (?,?)",
+        CATEGORIAS_VIRAIS,
+    )
+
+
+def insert_patologias_virais(conn):
+    for row in PATOLOGIAS_VIRAIS:
+        (nome, cid10, cat_nome, desc, notif, tipo_notif,
+         prev, mort, pop_risco, fonte_sigla) = row
+        cat_id = get_id(conn, "categorias_patologias", "nome", cat_nome)
+        fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        conn.execute(
+            """INSERT OR IGNORE INTO patologias
+               (nome,cid10,categoria_id,descricao,notificacao_compulsoria,tipo_notificacao,
+                prevalencia_br,mortalidade_br,populacao_risco,fonte_epidemio_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nome, cid10, cat_id, desc, int(bool(notif)), tipo_notif,
+             prev, mort, pop_risco, fonte_id),
+        )
+
+
+def insert_eficacia_viral(conn):
+    inserted = skipped = 0
+    for virus_nome, registros in EFICACIA_VIRAL.items():
+        try:
+            virus_id = get_id(conn, "virus", "nome_cientifico", virus_nome)
+        except ValueError:
+            print(f"  [AVISO] Vírus não encontrado: {virus_nome!r}")
+            skipped += len(registros)
+            continue
+
+        for rec in registros:
+            (atv_nome, pat_substr, efic, linha, evidencia,
+             resist, fonte_sigla, ano, obs) = rec
+
+            try:
+                atv_id = get_id(conn, "antivirais", "nome_generico", atv_nome)
+            except ValueError:
+                print(f"  [AVISO] Antiviral não encontrado: {atv_nome!r}")
+                skipped += 1
+                continue
+
+            try:
+                fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+            except ValueError:
+                fonte_id = None
+
+            pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+
+            conn.execute(
+                """INSERT OR IGNORE INTO eficacia_antiviral
+                   (virus_id,antiviral_id,patologia_id,eficacia_pct,linha_tratamento,
+                    nivel_evidencia,resistencia_br_pct,fonte_id,ano_dado,consideracoes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (virus_id, atv_id, pat_id, efic, linha, evidencia, resist, fonte_id, ano, obs),
+            )
+
+            if pat_id:
+                conn.execute(
+                    """INSERT OR IGNORE INTO patologia_virus (patologia_id, virus_id, papel)
+                       VALUES (?, ?, 'principal')""",
+                    (pat_id, virus_id),
+                )
+            inserted += 1
+
+    return inserted, skipped
+
+
+def insert_posologia_viral(conn):
+    inserted = skipped = 0
+    for rec in POSOLOGIA_VIRAL:
+        (atv_nome, pat_substr, pop, dose, freq, via,
+         dur_min, dur_max, dur_txt, aj_renal, aj_hep, obs, fonte_sigla) = rec
+        try:
+            atv_id = get_id(conn, "antivirais", "nome_generico", atv_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO posologia_viral
+               (antiviral_id,patologia_id,populacao,dose_unitaria,frequencia,via,
+                duracao_min_dias,duracao_max_dias,duracao_texto,
+                ajuste_renal,ajuste_hepatico,observacoes,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (atv_id, pat_id, pop, dose, freq, via,
+             dur_min, dur_max, dur_txt,
+             int(aj_renal), int(aj_hep), obs, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_interacoes_virais(conn):
+    inserted = skipped = 0
+    for rec in INTERACOES_VIRAIS:
+        (atv_nome, med_inter, classe_inter,
+         mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
+        try:
+            atv_id = get_id(conn, "antivirais", "nome_generico", atv_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO interacoes_antivirais
+               (antiviral_id,medicamento_interagente,classe_interagente,
+                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (atv_id, med_inter, classe_inter,
+             mecanismo, gravidade, efeito, conduta, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_tratamento_padrao_ouro_viral(conn):
+    inserted = skipped = 0
+    for rec in TRATAMENTO_PADRAO_OURO_VIRAL:
+        (pat_substr, atv_principal, combinacao, regime, duracao,
+         justificativa, alt_alergia, alt_resistencia, obs,
+         grau_rec, nivel_ev, fonte_sigla, ano_diretriz) = rec
+
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            print(f"  [AVISO] Patologia viral não encontrada: {pat_substr!r}")
+            skipped += 1
+            continue
+
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+
+        conn.execute(
+            """INSERT OR IGNORE INTO tratamento_padrao_ouro_viral
+               (patologia_id, antiviral_principal, combinacao, regime_resumido,
+                duracao_resumida, justificativa, alternativa_alergia,
+                alternativa_resistencia, obs_especiais, grau_recomendacao,
+                nivel_evidencia, fonte_id, ano_diretriz)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pat_id, atv_principal, combinacao, regime, duracao,
+             justificativa, alt_alergia, alt_resistencia, obs,
+             grau_rec, nivel_ev, fonte_id, ano_diretriz),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
 def insert_tratamento_padrao_ouro(conn):
     inserted = skipped = 0
     for rec in TRATAMENTO_PADRAO_OURO:
@@ -329,6 +541,10 @@ def print_summary(conn):
         "patologia_bacteria", "eficacia_antibiotico",
         "posologia", "interacoes_medicamentosas",
         "tratamento_padrao_ouro",
+        "virus", "antivirais",
+        "patologia_virus", "eficacia_antiviral",
+        "posologia_viral", "interacoes_antivirais",
+        "tratamento_padrao_ouro_viral",
     ]
     print("\n── Resumo do banco de dados ──────────────────────")
     for t in tables:
@@ -395,6 +611,54 @@ def build():
 
     print("Inserindo tratamento padrão-ouro...")
     inserted, skipped = insert_tratamento_padrao_ouro(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo fontes virais...")
+    insert_fontes_virais(conn)
+    conn.commit()
+
+    print("Inserindo famílias virais...")
+    insert_familias_virais(conn)
+    conn.commit()
+
+    print("Inserindo vírus...")
+    insert_virus(conn)
+    conn.commit()
+
+    print("Inserindo classes de antivirais...")
+    insert_classes_antivirais(conn)
+    conn.commit()
+
+    print("Inserindo antivirais...")
+    insert_antivirais(conn)
+    conn.commit()
+
+    print("Inserindo categorias virais...")
+    insert_categorias_virais(conn)
+    conn.commit()
+
+    print("Inserindo patologias virais...")
+    insert_patologias_virais(conn)
+    conn.commit()
+
+    print("Inserindo eficácia de antivirais...")
+    inserted, skipped = insert_eficacia_viral(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo posologia viral...")
+    inserted, skipped = insert_posologia_viral(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo interações antivirais...")
+    inserted, skipped = insert_interacoes_virais(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridas, {skipped} ignoradas")
+
+    print("Inserindo tratamento padrão-ouro viral...")
+    inserted, skipped = insert_tratamento_padrao_ouro_viral(conn)
     conn.commit()
     print(f"  → {inserted} inseridos, {skipped} ignorados")
 

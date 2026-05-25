@@ -29,6 +29,146 @@ CREATE TABLE IF NOT EXISTS familias_bacterianas (
 );
 
 -- ------------------------------------------------------------
+-- FAMÍLIAS VIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS familias_virais (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome    TEXT NOT NULL UNIQUE,
+    grupo   TEXT
+);
+
+-- ------------------------------------------------------------
+-- VÍRUS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS virus (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_cientifico         TEXT NOT NULL UNIQUE,
+    nome_comum              TEXT,
+    familia_id              INTEGER REFERENCES familias_virais(id),
+    tipo_acido_nucleico     TEXT CHECK(tipo_acido_nucleico IN ('DNA', 'RNA', 'DNA/RNA')),
+    envelope                TEXT CHECK(envelope IN ('sim', 'nao')),
+    transmissao_principal   TEXT,
+    reservatorio            TEXT
+);
+
+-- ------------------------------------------------------------
+-- CLASSES DE ANTIVIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS classes_antivirais (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT NOT NULL UNIQUE,
+    mecanismo_acao  TEXT,
+    alvo_celular    TEXT
+);
+
+-- ------------------------------------------------------------
+-- ANTIVIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS antivirais (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_generico       TEXT NOT NULL UNIQUE,
+    nome_comercial      TEXT,
+    classe_id           INTEGER REFERENCES classes_antivirais(id),
+    via_administracao   TEXT,
+    disponivel_sus      BOOLEAN DEFAULT 0,
+    anvisa_registrado   BOOLEAN DEFAULT 1,
+    observacoes         TEXT
+);
+
+-- ------------------------------------------------------------
+-- RELAÇÃO PATOLOGIA ↔ VÍRUS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patologia_virus (
+    patologia_id    INTEGER NOT NULL REFERENCES patologias(id),
+    virus_id        INTEGER NOT NULL REFERENCES virus(id),
+    papel           TEXT CHECK(papel IN ('principal', 'secundario', 'oportunista')),
+    frequencia_pct  REAL,
+    observacoes     TEXT,
+    PRIMARY KEY (patologia_id, virus_id)
+);
+
+-- ------------------------------------------------------------
+-- EFICÁCIA DE ANTIVIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS eficacia_antiviral (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    virus_id            INTEGER NOT NULL REFERENCES virus(id),
+    antiviral_id        INTEGER NOT NULL REFERENCES antivirais(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    eficacia_pct        REAL CHECK(eficacia_pct BETWEEN 0 AND 100),
+    linha_tratamento    INTEGER CHECK(linha_tratamento IN (1, 2, 3)),
+    nivel_evidencia     TEXT CHECK(nivel_evidencia IN ('A', 'B', 'C', 'D')),
+    resistencia_br_pct  REAL,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id),
+    ano_dado            INTEGER,
+    consideracoes       TEXT
+);
+
+-- ------------------------------------------------------------
+-- POSOLOGIA ANTIVIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS posologia_viral (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    antiviral_id        INTEGER NOT NULL REFERENCES antivirais(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    populacao           TEXT NOT NULL CHECK(populacao IN
+                            ('adulto','pediatrico','gestante','idoso','insuf_renal','insuf_hepatica','neonato')),
+    dose_unitaria       TEXT NOT NULL,
+    frequencia          TEXT NOT NULL,
+    via                 TEXT NOT NULL,
+    duracao_min_dias    INTEGER,
+    duracao_max_dias    INTEGER,
+    duracao_texto       TEXT,
+    ajuste_renal        BOOLEAN DEFAULT 0,
+    ajuste_hepatico     BOOLEAN DEFAULT 0,
+    observacoes         TEXT,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- ------------------------------------------------------------
+-- INTERAÇÕES ANTIVIRAIS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS interacoes_antivirais (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    antiviral_id            INTEGER NOT NULL REFERENCES antivirais(id),
+    medicamento_interagente TEXT NOT NULL,
+    classe_interagente      TEXT,
+    mecanismo               TEXT,
+    gravidade               TEXT CHECK(gravidade IN ('contraindicada','grave','moderada','leve')),
+    efeito_clinico          TEXT,
+    conduta                 TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- ------------------------------------------------------------
+-- TRATAMENTO PADRÃO-OURO VIRAL
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro_viral (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id            INTEGER NOT NULL REFERENCES patologias(id),
+    antiviral_principal     TEXT NOT NULL,
+    combinacao              TEXT,
+    regime_resumido         TEXT,
+    duracao_resumida        TEXT,
+    justificativa           TEXT,
+    alternativa_alergia     TEXT,
+    alternativa_resistencia TEXT,
+    obs_especiais           TEXT,
+    grau_recomendacao       TEXT CHECK(grau_recomendacao IN ('A', 'B', 'C', 'D')),
+    nivel_evidencia         TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id),
+    ano_diretriz            INTEGER
+);
+
+-- Índices virais
+CREATE INDEX IF NOT EXISTS idx_patologia_virus_pat  ON patologia_virus(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_patologia_virus_vir  ON patologia_virus(virus_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_viral_virus  ON eficacia_antiviral(virus_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_viral_atv    ON eficacia_antiviral(antiviral_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_viral_pat    ON eficacia_antiviral(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_trat_padrao_viral_pat ON tratamento_padrao_ouro_viral(patologia_id);
+
+-- ------------------------------------------------------------
 -- BACTÉRIAS
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bacterias (

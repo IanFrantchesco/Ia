@@ -571,3 +571,123 @@ CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_fun  ON eficacia_antifungico(fun
 CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_atf  ON eficacia_antifungico(antifungico_id);
 CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_pat  ON eficacia_antifungico(patologia_id);
 CREATE INDEX IF NOT EXISTS idx_trat_padrao_fungico   ON tratamento_padrao_ouro_fungico(patologia_id);
+
+-- ============================================================
+-- MÓDULO PARASITOSES
+-- Fontes: PCDT-MS, SVS/GVS 5ª ed. 2022, SBMT, SBI, ANVISA
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS familias_parasitarias (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome    TEXT NOT NULL UNIQUE,
+    filo    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS parasitos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_cientifico     TEXT NOT NULL UNIQUE,
+    nome_comum          TEXT,
+    familia_id          INTEGER REFERENCES familias_parasitarias(id),
+    tipo                TEXT CHECK(tipo IN ('protozoario','helminto_nematoda','helminto_trematoda','helminto_cestoda','ectoparasito')),
+    ciclo_hospedeiro    TEXT,
+    habitat_principal   TEXT,
+    distribuicao_br     TEXT,
+    reservatorio        TEXT,
+    vetor               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS classes_antiparasitarios (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT NOT NULL UNIQUE,
+    mecanismo_acao  TEXT,
+    alvo_celular    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS antiparasitarios (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_generico           TEXT NOT NULL UNIQUE,
+    nome_comercial          TEXT,
+    classe_id               INTEGER REFERENCES classes_antiparasitarios(id),
+    via_administracao       TEXT,
+    disponivel_sus          BOOLEAN DEFAULT 0,
+    anvisa_registrado       BOOLEAN DEFAULT 1,
+    observacoes             TEXT
+);
+
+CREATE TABLE IF NOT EXISTS patologia_parasito (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id    INTEGER NOT NULL REFERENCES patologias(id),
+    parasito_id     INTEGER NOT NULL REFERENCES parasitos(id),
+    papel           TEXT CHECK(papel IN ('principal','secundario','oportunista','vetor')),
+    frequencia_pct  REAL,
+    UNIQUE(patologia_id, parasito_id)
+);
+
+CREATE TABLE IF NOT EXISTS eficacia_antiparasitario (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    parasito_id         INTEGER NOT NULL REFERENCES parasitos(id),
+    antiparasitario_id  INTEGER NOT NULL REFERENCES antiparasitarios(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    eficacia_pct        REAL,
+    linha_tratamento    INTEGER DEFAULT 1,
+    nivel_evidencia     TEXT,
+    resistencia_br_pct  REAL,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id),
+    ano_dado            INTEGER,
+    consideracoes       TEXT,
+    UNIQUE(parasito_id, antiparasitario_id, patologia_id)
+);
+
+CREATE TABLE IF NOT EXISTS posologia_parasitaria (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    antiparasitario_id  INTEGER NOT NULL REFERENCES antiparasitarios(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    populacao           TEXT,
+    dose_unitaria       TEXT,
+    frequencia          TEXT,
+    via                 TEXT,
+    duracao_min_dias    INTEGER,
+    duracao_max_dias    INTEGER,
+    duracao_texto       TEXT,
+    ajuste_renal        BOOLEAN DEFAULT 0,
+    ajuste_hepatico     BOOLEAN DEFAULT 0,
+    observacoes         TEXT,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id)
+);
+
+CREATE TABLE IF NOT EXISTS interacoes_antiparasitarios (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    antiparasitario_id      INTEGER NOT NULL REFERENCES antiparasitarios(id),
+    medicamento_interagente TEXT NOT NULL,
+    classe_interagente      TEXT,
+    mecanismo               TEXT,
+    gravidade               TEXT CHECK(gravidade IN ('grave','moderada','leve','contraindicada')),
+    efeito_clinico          TEXT,
+    conduta                 TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id)
+);
+
+CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro_parasitario (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id            INTEGER NOT NULL UNIQUE REFERENCES patologias(id),
+    antiparasitario_principal TEXT NOT NULL,
+    combinacao              TEXT,
+    regime_resumido         TEXT,
+    duracao_resumida        TEXT,
+    justificativa           TEXT,
+    alternativa_alergia     TEXT,
+    alternativa_resistencia TEXT,
+    obs_especiais           TEXT,
+    grau_recomendacao       TEXT CHECK(grau_recomendacao IN ('A','B','C','D')),
+    nivel_evidencia         TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id),
+    ano_diretriz            INTEGER
+);
+
+-- Índices parasitoses
+CREATE INDEX IF NOT EXISTS idx_patologia_parasito_pat  ON patologia_parasito(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_patologia_parasito_par  ON patologia_parasito(parasito_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_par    ON eficacia_antiparasitario(parasito_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_atp    ON eficacia_antiparasitario(antiparasitario_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_pat    ON eficacia_antiparasitario(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_trat_padrao_parasit     ON tratamento_padrao_ouro_parasitario(patologia_id);

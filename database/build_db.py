@@ -28,6 +28,15 @@ from data_virais_eficacia import EFICACIA_VIRAL
 from data_virais_posologia import POSOLOGIA_VIRAL
 from data_virais_interacoes import INTERACOES_VIRAIS
 from data_virais_tratamento import TRATAMENTO_PADRAO_OURO_VIRAL
+from data_fungicos_agentes import (
+    FONTES_FUNGICAS, FAMILIAS_FUNGICAS, FUNGOS,
+    CLASSES_ANTIFUNGICOS, ANTIFUNGICOS,
+)
+from data_fungicos_patologias import CATEGORIAS_FUNGICAS, PATOLOGIAS_FUNGICAS
+from data_fungicos_eficacia import EFICACIA_FUNGICA
+from data_fungicos_posologia import POSOLOGIA_FUNGICA
+from data_fungicos_interacoes import INTERACOES_FUNGICAS
+from data_fungicos_tratamento import TRATAMENTO_PADRAO_OURO_FUNGICO
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -500,6 +509,198 @@ def insert_tratamento_padrao_ouro_viral(conn):
     return inserted, skipped
 
 
+def insert_fontes_fungicas(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO fontes_oficiais (sigla,nome,orgao,tipo,url,ano,descricao) VALUES (?,?,?,?,?,?,?)",
+        FONTES_FUNGICAS,
+    )
+
+
+def insert_familias_fungicas(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO familias_fungicas (nome,grupo) VALUES (?,?)",
+        FAMILIAS_FUNGICAS,
+    )
+
+
+def insert_fungos(conn):
+    for row in FUNGOS:
+        nome_cient, nome_com, familia_nome, tipo, transmissao, reservatorio, distribuicao = row
+        familia_id = get_id(conn, "familias_fungicas", "nome", familia_nome)
+        conn.execute(
+            """INSERT OR IGNORE INTO fungos
+               (nome_cientifico,nome_comum,familia_id,tipo,transmissao_principal,reservatorio,distribuicao_br)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_cient, nome_com, familia_id, tipo, transmissao, reservatorio, distribuicao),
+        )
+
+
+def insert_classes_antifungicos(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO classes_antifungicos (nome,mecanismo_acao,alvo_celular) VALUES (?,?,?)",
+        CLASSES_ANTIFUNGICOS,
+    )
+
+
+def insert_antifungicos(conn):
+    for row in ANTIFUNGICOS:
+        nome_gen, nome_com, classe_nome, via, sus, anvisa, obs = row
+        classe_id = get_id(conn, "classes_antifungicos", "nome", classe_nome)
+        conn.execute(
+            """INSERT OR IGNORE INTO antifungicos
+               (nome_generico,nome_comercial,classe_id,via_administracao,disponivel_sus,anvisa_registrado,observacoes)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_gen, nome_com, classe_id, via, int(sus), int(anvisa), obs),
+        )
+
+
+def insert_categorias_fungicas(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO categorias_patologias (nome,sistema) VALUES (?,?)",
+        CATEGORIAS_FUNGICAS,
+    )
+
+
+def insert_patologias_fungicas(conn):
+    for row in PATOLOGIAS_FUNGICAS:
+        (nome, cid10, cat_nome, desc, notif, tipo_notif,
+         prev, mort, pop_risco, fonte_sigla) = row
+        cat_id = get_id(conn, "categorias_patologias", "nome", cat_nome)
+        fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        conn.execute(
+            """INSERT OR IGNORE INTO patologias
+               (nome,cid10,categoria_id,descricao,notificacao_compulsoria,tipo_notificacao,
+                prevalencia_br,mortalidade_br,populacao_risco,fonte_epidemio_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nome, cid10, cat_id, desc, int(bool(notif)), tipo_notif,
+             prev, mort, pop_risco, fonte_id),
+        )
+
+
+def insert_eficacia_fungica(conn):
+    inserted = skipped = 0
+    for fungo_nome, registros in EFICACIA_FUNGICA.items():
+        try:
+            fungo_id = get_id(conn, "fungos", "nome_cientifico", fungo_nome)
+        except ValueError:
+            print(f"  [AVISO] Fungo não encontrado: {fungo_nome!r}")
+            skipped += len(registros)
+            continue
+        for rec in registros:
+            (atf_nome, pat_substr, efic, linha, evidencia,
+             resist, fonte_sigla, ano, obs) = rec
+            try:
+                atf_id = get_id(conn, "antifungicos", "nome_generico", atf_nome)
+            except ValueError:
+                print(f"  [AVISO] Antifúngico não encontrado: {atf_nome!r}")
+                skipped += 1
+                continue
+            try:
+                fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+            except ValueError:
+                fonte_id = None
+            pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+            conn.execute(
+                """INSERT OR IGNORE INTO eficacia_antifungico
+                   (fungo_id,antifungico_id,patologia_id,eficacia_pct,linha_tratamento,
+                    nivel_evidencia,resistencia_br_pct,fonte_id,ano_dado,consideracoes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (fungo_id, atf_id, pat_id, efic, linha, evidencia, resist, fonte_id, ano, obs),
+            )
+            if pat_id:
+                conn.execute(
+                    """INSERT OR IGNORE INTO patologia_fungo (patologia_id, fungo_id, papel)
+                       VALUES (?, ?, 'principal')""",
+                    (pat_id, fungo_id),
+                )
+            inserted += 1
+    return inserted, skipped
+
+
+def insert_posologia_fungica(conn):
+    inserted = skipped = 0
+    for rec in POSOLOGIA_FUNGICA:
+        (atf_nome, pat_substr, pop, dose, freq, via,
+         dur_min, dur_max, dur_txt, aj_renal, aj_hep, obs, fonte_sigla) = rec
+        try:
+            atf_id = get_id(conn, "antifungicos", "nome_generico", atf_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO posologia_fungica
+               (antifungico_id,patologia_id,populacao,dose_unitaria,frequencia,via,
+                duracao_min_dias,duracao_max_dias,duracao_texto,
+                ajuste_renal,ajuste_hepatico,observacoes,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (atf_id, pat_id, pop, dose, freq, via,
+             dur_min, dur_max, dur_txt, int(aj_renal), int(aj_hep), obs, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_interacoes_fungicas(conn):
+    inserted = skipped = 0
+    for rec in INTERACOES_FUNGICAS:
+        (atf_nome, med_inter, classe_inter,
+         mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
+        try:
+            atf_id = get_id(conn, "antifungicos", "nome_generico", atf_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO interacoes_antifungicos
+               (antifungico_id,medicamento_interagente,classe_interagente,
+                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (atf_id, med_inter, classe_inter,
+             mecanismo, gravidade, efeito, conduta, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_tratamento_padrao_ouro_fungico(conn):
+    inserted = skipped = 0
+    for rec in TRATAMENTO_PADRAO_OURO_FUNGICO:
+        (pat_substr, atf_principal, combinacao, regime, duracao,
+         justificativa, alt_alergia, alt_resistencia, obs,
+         grau_rec, nivel_ev, fonte_sigla, ano_diretriz) = rec
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            print(f"  [AVISO] Patologia fúngica não encontrada: {pat_substr!r}")
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO tratamento_padrao_ouro_fungico
+               (patologia_id, antifungico_principal, combinacao, regime_resumido,
+                duracao_resumida, justificativa, alternativa_alergia,
+                alternativa_resistencia, obs_especiais, grau_recomendacao,
+                nivel_evidencia, fonte_id, ano_diretriz)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pat_id, atf_principal, combinacao, regime, duracao,
+             justificativa, alt_alergia, alt_resistencia, obs,
+             grau_rec, nivel_ev, fonte_id, ano_diretriz),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
 def insert_tratamento_padrao_ouro(conn):
     inserted = skipped = 0
     for rec in TRATAMENTO_PADRAO_OURO:
@@ -545,6 +746,10 @@ def print_summary(conn):
         "patologia_virus", "eficacia_antiviral",
         "posologia_viral", "interacoes_antivirais",
         "tratamento_padrao_ouro_viral",
+        "fungos", "antifungicos",
+        "patologia_fungo", "eficacia_antifungico",
+        "posologia_fungica", "interacoes_antifungicos",
+        "tratamento_padrao_ouro_fungico",
     ]
     print("\n── Resumo do banco de dados ──────────────────────")
     for t in tables:
@@ -659,6 +864,54 @@ def build():
 
     print("Inserindo tratamento padrão-ouro viral...")
     inserted, skipped = insert_tratamento_padrao_ouro_viral(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo fontes fúngicas...")
+    insert_fontes_fungicas(conn)
+    conn.commit()
+
+    print("Inserindo famílias fúngicas...")
+    insert_familias_fungicas(conn)
+    conn.commit()
+
+    print("Inserindo fungos...")
+    insert_fungos(conn)
+    conn.commit()
+
+    print("Inserindo classes de antifúngicos...")
+    insert_classes_antifungicos(conn)
+    conn.commit()
+
+    print("Inserindo antifúngicos...")
+    insert_antifungicos(conn)
+    conn.commit()
+
+    print("Inserindo categorias fúngicas...")
+    insert_categorias_fungicas(conn)
+    conn.commit()
+
+    print("Inserindo patologias fúngicas...")
+    insert_patologias_fungicas(conn)
+    conn.commit()
+
+    print("Inserindo eficácia de antifúngicos...")
+    inserted, skipped = insert_eficacia_fungica(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo posologia fúngica...")
+    inserted, skipped = insert_posologia_fungica(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo interações antifúngicos...")
+    inserted, skipped = insert_interacoes_fungicas(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridas, {skipped} ignoradas")
+
+    print("Inserindo tratamento padrão-ouro fúngico...")
+    inserted, skipped = insert_tratamento_padrao_ouro_fungico(conn)
     conn.commit()
     print(f"  → {inserted} inseridos, {skipped} ignorados")
 

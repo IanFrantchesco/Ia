@@ -431,3 +431,143 @@ CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro (
 );
 
 CREATE INDEX IF NOT EXISTS idx_trat_padrao_patologia ON tratamento_padrao_ouro(patologia_id);
+
+-- ------------------------------------------------------------
+-- FAMÍLIAS FÚNGICAS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS familias_fungicas (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome    TEXT NOT NULL UNIQUE,
+    grupo   TEXT
+);
+
+-- ------------------------------------------------------------
+-- FUNGOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fungos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_cientifico     TEXT NOT NULL UNIQUE,
+    nome_comum          TEXT,
+    familia_id          INTEGER REFERENCES familias_fungicas(id),
+    tipo                TEXT CHECK(tipo IN ('levedura','fungo_filamentoso','dimórfico')),
+    transmissao_principal TEXT,
+    reservatorio        TEXT,
+    distribuicao_br     TEXT
+);
+
+-- ------------------------------------------------------------
+-- CLASSES DE ANTIFÚNGICOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS classes_antifungicos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT NOT NULL UNIQUE,
+    mecanismo_acao  TEXT,
+    alvo_celular    TEXT
+);
+
+-- ------------------------------------------------------------
+-- ANTIFÚNGICOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS antifungicos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_generico       TEXT NOT NULL UNIQUE,
+    nome_comercial      TEXT,
+    classe_id           INTEGER REFERENCES classes_antifungicos(id),
+    via_administracao   TEXT,
+    disponivel_sus      BOOLEAN DEFAULT 0,
+    anvisa_registrado   BOOLEAN DEFAULT 1,
+    observacoes         TEXT
+);
+
+-- ------------------------------------------------------------
+-- RELAÇÃO PATOLOGIA ↔ FUNGO
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patologia_fungo (
+    patologia_id    INTEGER NOT NULL REFERENCES patologias(id),
+    fungo_id        INTEGER NOT NULL REFERENCES fungos(id),
+    papel           TEXT CHECK(papel IN ('principal','secundario','oportunista')),
+    frequencia_pct  REAL,
+    observacoes     TEXT,
+    PRIMARY KEY (patologia_id, fungo_id)
+);
+
+-- ------------------------------------------------------------
+-- EFICÁCIA DE ANTIFÚNGICOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS eficacia_antifungico (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    fungo_id            INTEGER NOT NULL REFERENCES fungos(id),
+    antifungico_id      INTEGER NOT NULL REFERENCES antifungicos(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    eficacia_pct        REAL CHECK(eficacia_pct BETWEEN 0 AND 100),
+    linha_tratamento    INTEGER CHECK(linha_tratamento IN (1,2,3)),
+    nivel_evidencia     TEXT CHECK(nivel_evidencia IN ('A','B','C','D')),
+    resistencia_br_pct  REAL,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id),
+    ano_dado            INTEGER,
+    consideracoes       TEXT
+);
+
+-- ------------------------------------------------------------
+-- POSOLOGIA ANTIFÚNGICOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS posologia_fungica (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    antifungico_id      INTEGER NOT NULL REFERENCES antifungicos(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    populacao           TEXT NOT NULL CHECK(populacao IN
+                            ('adulto','pediatrico','gestante','idoso','insuf_renal','insuf_hepatica','neonato')),
+    dose_unitaria       TEXT NOT NULL,
+    frequencia          TEXT NOT NULL,
+    via                 TEXT NOT NULL,
+    duracao_min_dias    INTEGER,
+    duracao_max_dias    INTEGER,
+    duracao_texto       TEXT,
+    ajuste_renal        BOOLEAN DEFAULT 0,
+    ajuste_hepatico     BOOLEAN DEFAULT 0,
+    observacoes         TEXT,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- ------------------------------------------------------------
+-- INTERAÇÕES ANTIFÚNGICOS
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS interacoes_antifungicos (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    antifungico_id          INTEGER NOT NULL REFERENCES antifungicos(id),
+    medicamento_interagente TEXT NOT NULL,
+    classe_interagente      TEXT,
+    mecanismo               TEXT,
+    gravidade               TEXT CHECK(gravidade IN ('contraindicada','grave','moderada','leve')),
+    efeito_clinico          TEXT,
+    conduta                 TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- ------------------------------------------------------------
+-- TRATAMENTO PADRÃO-OURO FÚNGICO
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro_fungico (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id            INTEGER NOT NULL REFERENCES patologias(id),
+    antifungico_principal   TEXT NOT NULL,
+    combinacao              TEXT,
+    regime_resumido         TEXT,
+    duracao_resumida        TEXT,
+    justificativa           TEXT,
+    alternativa_alergia     TEXT,
+    alternativa_resistencia TEXT,
+    obs_especiais           TEXT,
+    grau_recomendacao       TEXT CHECK(grau_recomendacao IN ('A','B','C','D')),
+    nivel_evidencia         TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id),
+    ano_diretriz            INTEGER
+);
+
+-- Índices fúngicos
+CREATE INDEX IF NOT EXISTS idx_patologia_fungo_pat   ON patologia_fungo(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_patologia_fungo_fun   ON patologia_fungo(fungo_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_fun  ON eficacia_antifungico(fungo_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_atf  ON eficacia_antifungico(antifungico_id);
+CREATE INDEX IF NOT EXISTS idx_eficacia_fungica_pat  ON eficacia_antifungico(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_trat_padrao_fungico   ON tratamento_padrao_ouro_fungico(patologia_id);

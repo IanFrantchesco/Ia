@@ -60,6 +60,7 @@ FAMILIAS_BACTERIANAS = [
     ("Bartonellaceae", "Proteobacteria"),
     ("Bordetellaceae", "Proteobacteria"),
     ("Phenazinaceae", "Actinobacteria"),
+    ("Francisellaceae", "Proteobacteria"),
 ]
 
 # (nome_cientifico, nome_comum, gram, familia_nome, aerobiose, formato, resistencia_natural, obs)
@@ -114,6 +115,8 @@ BACTERIAS = [
     ("Nocardia spp.", "Nocardia", "positiva", "Nocardiaceae", "aerobio", "bacilo filamentoso", None, "Nocardiose; imunocomprometidos"),
     ("Bartonella henselae", "Bartonela", "negativa", "Bartonellaceae", "aerobio", "bacilo", None, "Doença da arranhadura do gato; angiomatose bacilar"),
     ("Staphylococcus saprophyticus", "Estafilococo saprófito", "positiva", "Staphylococcaceae", "facultativo", "coco", "Novobiocina (intrínseca)", "ITU em mulheres jovens sexualmente ativas"),
+    ("Mycobacterium ulcerans", "Bacilo de Buruli", "nao_aplicavel", "Mycobacteriaceae", "aerobio", "bacilo", "Intrínseca a maioria dos ATBs convencionais; rifampicina+estreptomicina são opções", "Úlcera de Buruli; endêmica em áreas tropicais; casos documentados no Brasil (PA, AM)"),
+    ("Francisella tularensis", "Bacilo da tularemia", "negativa", "Francisellaceae", "aerobio", "cocobacilo", "Intrínseca a betalactâmicos (maioria das cepas)", "Tularemia; zoonose de roedores e lagomorfos; raramente reportada no Brasil"),
 ]
 
 CLASSES_ANTIBIOTICOS = [

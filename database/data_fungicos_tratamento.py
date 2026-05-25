@@ -520,4 +520,110 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
      "Retirar CVC e sonda urinária se possível.",
      "A", "II", "SBI-CAND", 2022),
 
+    # ══════════════════════════════════════════════════════════════════
+    # TRATAMENTOS FALTANTES
+    # ══════════════════════════════════════════════════════════════════
+    (
+        "Aspergiloma Pulmonar",
+        "Voriconazol",
+        None,
+        "Assintomático: observação clínica sem antifúngico. Sintomático (hemoptise leve-moderada): "
+        "Voriconazol 6 mg/kg IV 12/12h D1 depois 4 mg/kg IV 12/12h ou 200 mg VO 12/12h × 3–6 meses. "
+        "Hemoptise grave: embolização arterial brônquica ou ressecção cirúrgica.",
+        "3–6 meses (médico) / definitivo (cirúrgico)",
+        "Aspergiloma é 'bola fúngica' em cavidade pulmonar preexistente — Aspergillus não invade tecido. "
+        "Cirurgia é o único tratamento curativo mas tem alta morbimortalidade em pacientes com doença pulmonar grave. "
+        "Antifúngico reduz carga fúngica e sintomas mas raramente erradica.",
+        "Itraconazol 200 mg VO 12/12h × 3–6 meses — alternativa oral de menor custo",
+        "Anfotericina B inalatória (uso compassivo em hemoptise refratária sem condições cirúrgicas)",
+        "Tuberculose prévia é o principal fator de risco no Brasil. "
+        "Instilação intracavitária de anfotericina B guiada por TC pode ser tentada em casos selecionados.",
+        "B", "II", "SBI-ASPER", 2022
+    ),
+    (
+        "Aspergilose Broncopulmonar Alérgica (ABPA)",
+        "Itraconazol",
+        "+ Prednisona",
+        "Prednisona 0,5 mg/kg/dia VO × 2 semanas, depois 0,5 mg/kg em dias alternados × 8 semanas, "
+        "redução gradual. Itraconazol 200 mg VO 12/12h × 16 semanas (reduz necessidade de corticoide).",
+        "16 semanas (fase aguda) + manutenção conforme resposta",
+        "ABPA é resposta imunológica exagerada a Aspergillus em asmáticos e fibrose cística — "
+        "não é infecção invasiva. Combinação corticoide + antifúngico reduz exacerbações e preserva função pulmonar.",
+        "Voriconazol 200 mg VO 12/12h × 16 semanas — intolerância ou falha ao itraconazol",
+        "Posaconazol 300 mg VO 24/24h — ABPA refratária em fibrose cística",
+        "Monitorar níveis séricos de itraconazol (alvo: > 1 mg/L). IgE total e IgE específica anti-Aspergillus "
+        "são marcadores de atividade. Broncodilatadores e fisioterapia respiratória são coadjuvantes essenciais.",
+        "A", "I", "SBI-ASPER", 2022
+    ),
+    (
+        "Rinossinusite Fúngica",
+        "Anfotericina B lipossomal",
+        None,
+        "Invasiva aguda (mucormicose/aspergilose): Anfotericina B lipossomal 5–10 mg/kg/dia IV + "
+        "DESBRIDAMENTO CIRÚRGICO AGRESSIVO imediato + controle do fator predisponente (DM, imunossupressão). "
+        "Alérgica: Itraconazol 200 mg VO 12/12h × 3–6 meses + corticoide tópico nasal.",
+        "Invasiva: mínimo 4–6 semanas IV / Alérgica: 3–6 meses",
+        "Rinossinusite fúngica invasiva (especialmente mucormicose) tem mortalidade > 50% — "
+        "cirurgia é o pilar terapêutico e deve preceder ou acompanhar antifúngico. "
+        "Forma alérgica é não-invasiva e responde a antifúngico oral.",
+        "Voriconazol 6 mg/kg IV 12/12h D1 depois 4 mg/kg IV 12/12h — invasiva por Aspergillus",
+        "Posaconazol 300 mg IV/VO 24/24h — terapia de resgate em mucormicose refratária",
+        "Mucormicose nasal-orbital-cerebral é emergência — mobilizar cirurgia em < 24h. "
+        "Controle glicêmico rígido (DM) e redução de imunossupressão são fundamentais. "
+        "Oxigenoterapia hiperbárica pode ser coadjuvante em centros especializados.",
+        "A", "II", "SBI-ASPER", 2022
+    ),
+    (
+        "Dermatofitose Ungueal e Cutânea por Tricofíton",
+        "Terbinafina",
+        None,
+        "Ungueal (onicomicose): Terbinafina 250 mg VO 24/24h × 6 semanas (mãos) ou 12 semanas (pés). "
+        "Cutânea (tinea manum/barbae): Terbinafina 250 mg VO 24/24h × 2–4 semanas ou "
+        "Terbinafina creme 1% tópico 12/12h × 2–4 semanas.",
+        "6–12 semanas (ungueal) / 2–4 semanas (cutânea)",
+        "Terbinafina é fungicida contra dermatófitos — taxas de cura micológica > 70% na onicomicose. "
+        "Superior ao itraconazol em eficácia e custo-benefício para dermatofitoses.",
+        "Itraconazol 200 mg VO 12/12h × 7 dias/mês (pulsoterapia) × 2 meses (mãos) ou 3 meses (pés)",
+        "Fluconazol 150–300 mg VO 1×/semana × 3–6 meses — alternativa quando outros indisponíveis",
+        "Confirmação micológica (cultura ou PCR) antes de tratar onicomicose. "
+        "Evitar esmaltes e calçados fechados úmidos. Taxa de recidiva alta — higiene e prevenção essenciais. "
+        "Amorolfina laca ungueal 5% pode ser associada ao tratamento sistêmico.",
+        "A", "I", "SBD-MICOS", 2022
+    ),
+    (
+        "Tinea Corporis, Cruris e Faciei",
+        "Clotrimazol",
+        None,
+        "Lesões localizadas: Clotrimazol creme 1% tópico 12/12h × 2–4 semanas ou "
+        "Terbinafina creme 1% tópico 24/24h × 1–2 semanas. "
+        "Lesões extensas/recidivantes: Terbinafina 250 mg VO 24/24h × 2–4 semanas.",
+        "2–4 semanas (tópico) / 2–4 semanas (sistêmico)",
+        "Tinea corporis/cruris são superficiais e respondem bem a antifúngicos tópicos azólicos ou alilaminas. "
+        "Terbinafina tópica tem menor tempo de tratamento por ser fungicida. "
+        "Tratamento sistêmico reservado para casos extensos ou refratários.",
+        "Miconazol creme 2% tópico 12/12h × 2–4 semanas — alternativa de baixo custo",
+        "Itraconazol 100 mg VO 24/24h × 2 semanas — refratário ao tópico",
+        "Evitar corticosteroide tópico isolado — agrava o quadro (tinea incógnita). "
+        "Tinea cruris: tratar tinea pedis associada para evitar reinfecção. "
+        "Roupas largas e secas reduzem recidiva.",
+        "A", "I", "SBD-MICOS", 2022
+    ),
+    (
+        "Pneumonia por Pneumocystis jirovecii (PCP)",
+        "Sulfametoxazol-trimetoprima (SMX-TMP)",
+        None,
+        "SMX-TMP 15–20 mg/kg/dia (componente TMP) IV ou VO dividido em 3–4 doses × 21 dias. "
+        "PaO2 < 70 mmHg ou gradiente A-a > 35 mmHg: associar Prednisona 40 mg VO 12/12h × 5 dias → "
+        "40 mg/dia × 5 dias → 20 mg/dia × 11 dias.",
+        "21 dias",
+        "SMX-TMP é o tratamento padrão-ouro para PCP desde os anos 1980 — taxa de sucesso > 85%. "
+        "Corticoide adjuvante reduz mortalidade em casos moderados-graves (PaO2 < 70 mmHg). "
+        "PCP é infecção oportunista definidora de AIDS — investigar HIV em todo caso.",
+        "Pentamidina 4 mg/kg/dia IV × 21 dias — intolerância grave a SMX-TMP (hipersensibilidade, "
+        "citopenias graves, insuficiência renal grave)",
+        "Atovaquona 750 mg VO 12/12h × 21 dias — forma leve-moderada com intolerância a SMX-TMP",
+        "Profilaxia primária com SMX-TMP 400/80 mg VO 24/24h quando CD4 < 200/mm³ em PVHIV. "
+        "Profilaxia secundária obrigatória após episódio até CD4 > 200/mm³ por > 3 meses com TARV.",
+        "A", "I", "PCDT-HIV", 2022
+    ),
 ]

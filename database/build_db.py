@@ -233,6 +233,36 @@ def insert_patologia_bacteria_links(conn):
         ("Staphylococcus aureus",     "Fasciíte Necrotizante",                "secundario", 20.0),
         ("Staphylococcus aureus",     "Infecção de Corrente Sanguínea por Enterococcus Vancomicina-Resistente (VRE)", "oportunista", 5.0),
         ("Chlamydia trachomatis",     "Infecção por Mycoplasma hominis / Ureaplasma urealyticum", "secundario", 30.0),
+        # Links extras — patologias bacterianas sem agente vinculado
+        ("Streptococcus viridans (grupo)", "Endocardite Infecciosa por Streptococcus viridans",  "principal", 40.0),
+        ("Staphylococcus aureus",     "Endoftalmite Bacteriana Pós-operatória",             "principal", 30.0),
+        ("Staphylococcus epidermidis","Endoftalmite Bacteriana Pós-operatória",             "secundario", 25.0),
+        ("Haemophilus influenzae",    "Pneumonia Adquirida na Comunidade (PAC) – Haemophilus", "principal", 80.0),
+        ("Haemophilus influenzae",    "Meningite Bacteriana por Haemophilus",               "principal", 90.0),
+        ("Streptococcus pneumoniae",  "Conjuntivite Bacteriana Aguda",                      "principal", 30.0),
+        ("Haemophilus influenzae",    "Conjuntivite Bacteriana Aguda",                      "principal", 25.0),
+        ("Staphylococcus aureus",     "Conjuntivite Bacteriana Aguda",                      "secundario", 20.0),
+        ("Streptococcus viridans",    "Abscesso Dentário / Infecção Odontogênica",          "principal", 45.0),
+        ("Staphylococcus aureus",     "Abscesso Dentário / Infecção Odontogênica",          "secundario", 15.0),
+        ("Escherichia coli",          "Prostatite Bacteriana Aguda",                        "principal", 50.0),
+        ("Klebsiella pneumoniae",     "Prostatite Bacteriana Aguda",                        "secundario", 15.0),
+        ("Escherichia coli",          "ITU Gestacional / Bacteriúria Assintomática",        "principal", 70.0),
+        ("Klebsiella pneumoniae",     "ITU Gestacional / Bacteriúria Assintomática",        "secundario", 15.0),
+        ("Proteus mirabilis",         "ITU por Proteus mirabilis",                          "principal", 100.0),
+        ("Mycobacterium ulcerans",    "Úlcera de Buruli – Mycobacterium ulcerans",          "principal", 100.0),
+        ("Escherichia coli",          "Sepse Neonatal por Escherichia coli",                "principal", 100.0),
+        ("Escherichia coli",          "Infecção por Escherichia coli Enteropatogênica",     "principal", 100.0),
+        ("Shigella spp.",              "Shigelose (Disenteria Bacilar)",                     "principal", 100.0),
+        ("Staphylococcus aureus",     "Difteria Cutânea",                                   "oportunista", 10.0),
+        ("Corynebacterium diphtheriae","Difteria Cutânea",                                  "principal", 90.0),
+        ("Streptococcus agalactiae",  "Sepse Neonatal por Escherichia coli",               "secundario", 15.0),
+        # Links para patologias bacterianas ainda sem agente
+        ("Streptococcus viridans (grupo)", "Abscesso Cerebral Bacteriano",               "principal", 35.0),
+        ("Staphylococcus aureus",          "Abscesso Cerebral Bacteriano",               "secundario", 20.0),
+        ("Borrelia spp.",                  "Febre Relapsante",                            "principal", 100.0),
+        ("Burkholderia pseudomallei",      "Melioidose",                                  "principal", 100.0),
+        ("Francisella tularensis",         "Tularemia",                                   "principal", 100.0),
+        ("Streptococcus viridans (grupo)", "Abscesso Dentário",                           "principal", 45.0),
     ]
 
     for bact_nome, pat_substr, papel, freq in extras:
@@ -374,6 +404,99 @@ def insert_patologias_virais(conn):
         )
 
 
+def insert_patologia_virus_links(conn):
+    extras = [
+        ("Dengue virus (DENV 1-4)",                      "Dengue",                           "principal", 100.0),
+        ("Zika virus (ZIKV)",                            "Zika (infecção aguda",             "principal", 100.0),
+        ("Zika virus (ZIKV)",                            "Síndrome Congênita do Zika",       "principal", 100.0),
+        ("Chikungunya virus (CHIKV)",                    "Chikungunya",                      "principal", 100.0),
+        ("Yellow fever virus (YFV)",                     "Febre Amarela",                    "principal", 100.0),
+        ("West Nile virus (WNV)",                        "Febre do Nilo Ocidental",          "principal", 100.0),
+        ("Hepatitis A virus (HAV)",                      "Hepatite A",                       "principal", 100.0),
+        ("Hepatitis E virus (HEV)",                      "Hepatite E",                       "principal", 100.0),
+        ("Human T-lymphotropic virus 1 (HTLV-1)",        "Infecção pelo HTLV-1",             "principal", 100.0),
+        ("Human T-lymphotropic virus 1 (HTLV-1)",        "HTLV — Leucemia",                  "principal", 100.0),
+        ("Human T-lymphotropic virus 1 (HTLV-1)",        "HTLV — Mielopatia",                "principal", 100.0),
+        ("Epstein-Barr virus (EBV)",                     "Mononucleose Infecciosa",          "principal", 100.0),
+        ("Human respiratory syncytial virus (RSV)",      "Infecção pelo Vírus Sincicial",    "principal", 100.0),
+        ("Human adenovirus (HAdV)",                      "Infecção por Adenovírus",          "principal", 100.0),
+        ("Measles morbillivirus",                        "Sarampo",                          "principal", 100.0),
+        ("Rubella virus",                                "Rubéola",                          "principal", 100.0),
+        ("Mumps orthorubulavirus",                       "Caxumba",                          "principal", 100.0),
+        ("Enterovirus 71 (EV-A71)",                      "Doença Mão-Pé-Boca",              "principal", 60.0),
+        ("Coxsackievirus A16 (CVA16)",                   "Doença Mão-Pé-Boca",              "principal", 40.0),
+        ("Rotavirus A",                                  "Rotavirose",                       "principal", 100.0),
+        ("Norovirus (GI/GII)",                           "Norovirose",                       "principal", 100.0),
+        ("Rabies lyssavirus",                            "Raiva",                            "principal", 100.0),
+        ("Enterovirus 71 (EV-A71)",                      "Meningite Viral",                  "principal", 40.0),
+        ("Human papillomavirus (HPV)",                   "Infecção pelo HPV",                "principal", 100.0),
+        ("Hantavirus (Araraquara, Juquitiba, Laguna Negra)", "Hantavirose",                  "principal", 100.0),
+        ("Poliovirus (PV 1, 2, 3)",                      "Poliomielite",                     "principal", 100.0),
+        ("Cytomegalovirus (CMV)",                        "CMV Congênito",                    "principal", 100.0),
+        ("Hepatitis B virus (HBV)",                      "Hepatite B Perinatal",             "principal", 100.0),
+        ("Herpes simplex virus 1 (HSV-1)",               "Herpes Neonatal",                  "principal", 50.0),
+        ("Herpes simplex virus 2 (HSV-2)",               "Herpes Neonatal",                  "principal", 50.0),
+        # Links a partir da eficácia viral — HIV, HCV, HBV, influenza, varicela, COVID
+        ("Human immunodeficiency virus 1/2 (HIV-1/2)",  "HIV/AIDS",                         "principal", 100.0),
+        ("Hepatitis C virus (HCV)",                      "Hepatite C",                       "principal", 100.0),
+        ("Hepatitis B virus (HBV)",                      "Hepatite B",                       "principal", 100.0),
+        ("Influenza virus A/B/C",                        "Influenza",                        "principal", 100.0),
+        ("Varicella-zoster virus (VZV)",                 "Varicela",                         "principal", 100.0),
+        ("Varicella-zoster virus (VZV)",                 "Herpes-Zóster",                    "principal", 100.0),
+        ("SARS-CoV-2",                                   "COVID-19",                         "principal", 100.0),
+        ("Herpes simplex virus 1 (HSV-1)",               "Herpes Labial / Genital",          "principal", 60.0),
+        ("Herpes simplex virus 2 (HSV-2)",               "Herpes Labial / Genital",          "principal", 40.0),
+        ("Cytomegalovirus (CMV)",                        "Doença por CMV em Imunocomprometi", "principal", 100.0),
+        ("Epstein-Barr virus (EBV)",                     "Linfoma de Burkitt",               "secundario", 90.0),
+        ("Human herpesvirus 8 (HHV-8)",                  "Sarcoma de Kaposi",                "principal", 100.0),
+        ("Hepatitis D virus (HDV)",                      "Hepatite D",                       "principal", 100.0),
+    ]
+    for virus_nome, pat_substr, papel, freq in extras:
+        try:
+            virus_id = get_id(conn, "virus", "nome_cientifico", virus_nome)
+        except ValueError:
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO patologia_virus
+               (patologia_id, virus_id, papel, frequencia_pct)
+               VALUES (?,?,?,?)""",
+            (pat_id, virus_id, papel, freq),
+        )
+
+
+def insert_patologia_fungo_links(conn):
+    extras = [
+        ("Lacazia loboi",                    "Lobomicose",                       "principal", 100.0),
+        ("Aspergillus fumigatus",            "Aspergiloma Pulmonar",             "principal", 70.0),
+        ("Aspergillus fumigatus",            "Aspergilose Broncopulmonar",       "principal", 80.0),
+        ("Aspergillus fumigatus",            "Rinossinusite Fúngica",            "principal", 40.0),
+        ("Aspergillus flavus",               "Rinossinusite Fúngica",            "secundario", 20.0),
+        ("Trichophyton rubrum",              "Dermatofitose Ungueal",            "principal", 70.0),
+        ("Trichophyton rubrum",              "Tinea Corporis",                   "principal", 50.0),
+        ("Pneumocystis jirovecii",           "Pneumonia por Pneumocystis",       "principal", 100.0),
+        ("Fusarium solani",                  "Micetoma Fúngico",                 "principal", 30.0),
+        ("Exophiala jeanselmei",             "Feohifomicose",                    "principal", 30.0),
+        ("Bipolaris spicifera",              "Rinossinusite Fúngica",            "secundario", 15.0),
+    ]
+    for fungo_nome, pat_substr, papel, freq in extras:
+        try:
+            fungo_id = get_id(conn, "fungos", "nome_cientifico", fungo_nome)
+        except ValueError:
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO patologia_fungo
+               (patologia_id, fungo_id, papel, frequencia_pct)
+               VALUES (?,?,?,?)""",
+            (pat_id, fungo_id, papel, freq),
+        )
+
+
 def insert_eficacia_viral(conn):
     inserted = skipped = 0
     for virus_nome, registros in EFICACIA_VIRAL.items():
@@ -388,6 +511,9 @@ def insert_eficacia_viral(conn):
             (atv_nome, pat_substr, efic, linha, evidencia,
              resist, fonte_sigla, ano, obs) = rec
 
+            if atv_nome is None:
+                skipped += 1
+                continue
             try:
                 atv_id = get_id(conn, "antivirais", "nome_generico", atv_nome)
             except ValueError:
@@ -847,6 +973,10 @@ def build():
     insert_patologias_virais(conn)
     conn.commit()
 
+    print("Criando vínculos patologia ↔ vírus...")
+    insert_patologia_virus_links(conn)
+    conn.commit()
+
     print("Inserindo eficácia de antivirais...")
     inserted, skipped = insert_eficacia_viral(conn)
     conn.commit()
@@ -893,6 +1023,10 @@ def build():
 
     print("Inserindo patologias fúngicas...")
     insert_patologias_fungicas(conn)
+    conn.commit()
+
+    print("Criando vínculos patologia ↔ fungo...")
+    insert_patologia_fungo_links(conn)
     conn.commit()
 
     print("Inserindo eficácia de antifúngicos...")

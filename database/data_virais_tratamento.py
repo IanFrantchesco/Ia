@@ -623,4 +623,167 @@ TRATAMENTO_PADRAO_OURO_VIRAL = [
         "Cobertura vacinal mínima de 95% com VOP+VIP essencial para manutenção da erradicação.",
         "A", "I", "SVS-POLIO", 2022
     ),
+
+    # ══════════════════════════════════════════════════════════════════
+    # TRATAMENTOS SUPORTIVOS — SEM ANTIVIRAL ESPECÍFICO
+    # ══════════════════════════════════════════════════════════════════
+    (
+        "Febre do Nilo Ocidental",
+        "Tratamento suportivo",
+        None,
+        "Hidratação, analgesia (Dipirona 500–1000 mg VO/IV 6/6h ou Paracetamol 500–750 mg VO 6/6h), "
+        "antieméticos se necessário. Forma neuroinvasiva: UTI com suporte respiratório e controle de edema cerebral.",
+        "Até resolução clínica",
+        "Não existe antiviral aprovado para WNV. O tratamento é exclusivamente suportivo. "
+        "A maioria dos casos (80%) é assintomática; apenas 1% evolui para doença neuroinvasiva grave.",
+        "Não se aplica",
+        "Imunoglobulina hiperimune (uso compassivo em neuroinvasiva grave — sem evidência robusta)",
+        "Doença de notificação compulsória no Brasil. Transmitida por Culex mosquitoes — "
+        "casos importados e autóctones registrados nas regiões Sul e Sudeste.",
+        "B", "III", "SVS-DENGUE", 2022
+    ),
+    (
+        "Doença Mão-Pé-Boca",
+        "Tratamento suportivo",
+        None,
+        "Hidratação oral rigorosa (risco de desidratação por odinofagia), analgesia com Paracetamol "
+        "15 mg/kg VO 6/6h (crianças) ou Ibuprofeno 10 mg/kg VO 8/8h. Higiene oral com clorexidina tópica.",
+        "7–10 dias (autolimitada)",
+        "Enterovírus 71 e Coxsackievírus A16 não têm antiviral específico aprovado. "
+        "A doença é autolimitada na maioria dos casos. EV71 tem maior risco de complicações neurológicas.",
+        "Não se aplica",
+        "Não há alternativa antiviral aprovada",
+        "ATENÇÃO: EV71 pode causar encefalite, edema pulmonar neurogênico e miocardite — "
+        "sinais de alarme: febre persistente > 3 dias, vômitos, letargia, convulsões → hospitalização imediata.",
+        "A", "III", "SBI-VIRAL", 2022
+    ),
+    (
+        "Meningite Viral",
+        "Tratamento suportivo",
+        None,
+        "Hidratação IV (SF 0,9% ou SG5%), analgesia (Dipirona IV), repouso em quarto escurecido. "
+        "Aciclovir 10 mg/kg IV 8/8h apenas se suspeita de HSV confirmada por PCR LCR.",
+        "5–7 dias (autolimitada) / 14–21 dias se HSV",
+        "Meningite viral por enterovírus é autolimitada — antibiótico e antiviral não indicados empiricamente. "
+        "Aciclovir coberto apenas após confirmação de HSV no LCR por PCR.",
+        "Aciclovir empírico se LCR atípico com suspeita de HSV antes do resultado de PCR",
+        "Não se aplica para enterovírus",
+        "Punção lombar essencial para diagnóstico diferencial com meningite bacteriana. "
+        "Meningite viral: glicose normal, proteína moderada, pleocitose linfocitária.",
+        "A", "II", "SBI-VIRAL", 2022
+    ),
+    (
+        "Infecção por Adenovírus Respiratório",
+        "Tratamento suportivo",
+        None,
+        "Hidratação, antitérmicos (Paracetamol 15 mg/kg/dose VO 6/6h), broncodilatadores se broncoespasmo. "
+        "Cidofovir IV apenas em imunossuprimidos graves com adenovirose disseminada.",
+        "7–14 dias (autolimitada na imunocompetente)",
+        "Não há antiviral aprovado para adenovírus respiratório em imunocompetentes. "
+        "Cidofovir tem uso compassivo em transplantados com adenovirose grave.",
+        "Não se aplica para imunocompetentes",
+        "Cidofovir 5 mg/kg IV semanal em imunossuprimidos graves (nefrotóxico — pré-hidratação obrigatória)",
+        "Adenovírus é causa importante de pneumonia em lactentes e crianças < 5 anos. "
+        "Epidemias em creches e quartéis militares são frequentes.",
+        "B", "III", "SBI-VIRAL", 2022
+    ),
+
+    # ══════════════════════════════════════════════════════════════════
+    # INFECÇÕES CONGÊNITAS E PERINATAIS
+    # ══════════════════════════════════════════════════════════════════
+    (
+        "CMV Congênito",
+        "Valganciclovir",
+        None,
+        "Valganciclovir 16 mg/kg VO 12/12h × 6 meses (neonatos sintomáticos com acometimento do SNC). "
+        "Ganciclovir 6 mg/kg IV 12/12h × 6 semanas se via oral inviável.",
+        "6 meses",
+        "Único tratamento que melhora desfechos auditivos e neurodesenvolvimento em CMV congênito sintomático "
+        "com acometimento do SNC. PCDT MS 2022 recomenda valganciclovir oral como padrão.",
+        "Ganciclovir IV — impossibilidade de administração oral",
+        "Não há alternativa estabelecida de eficácia equivalente",
+        "TRIAGEM AUDITIVA OBRIGATÓRIA (BERA/ABR). Monitorar neutropenia (principal toxicidade). "
+        "CMV congênito assintomático: acompanhamento audiológico sem tratamento antiviral imediato.",
+        "A", "I", "PCDT-HIV", 2022
+    ),
+    (
+        "Hepatite B Perinatal",
+        "Tenofovir disoproxil fumarato (TDF)",
+        None,
+        "Gestante com carga viral HBV > 200.000 UI/mL no 3º trimestre: TDF 300 mg VO 24/24h até 4–12 semanas pós-parto. "
+        "RN: Imunoglobulina anti-hepatite B (HBIG) 0,5 mL IM + Vacina HBV nas primeiras 12h de vida.",
+        "Profilaxia gestante: 3º trim. até pós-parto / RN: dose única HBIG + esquema vacinal completo",
+        "Profilaxia combinada HBIG + vacina reduz transmissão vertical para < 5% mesmo em mães HBeAg+. "
+        "TDF no 3º trimestre reduz carga viral materna e risco de breakthrough no RN.",
+        "Lamivudina 150 mg VO 24/24h (gestante com contraindicação a TDF — menos recomendado, risco de resistência)",
+        "Não se aplica — profilaxia, não tratamento de infecção estabelecida",
+        "Amamentação NÃO é contraindicada se RN recebeu HBIG + vacina. "
+        "HBsAg do RN deve ser testado aos 9–18 meses para confirmar eficácia da profilaxia.",
+        "A", "I", "PCDT-HEPB", 2022
+    ),
+    (
+        "Herpes Neonatal",
+        "Aciclovir",
+        None,
+        "Aciclovir 20 mg/kg IV 8/8h × 14 dias (doença localizada pele/olho/boca) ou "
+        "× 21 dias (SNC/disseminada). Seguido por supressão oral: Aciclovir 300 mg/m² VO 8/8h × 6 meses.",
+        "14–21 dias IV + 6 meses VO supressão",
+        "Herpes neonatal tem mortalidade > 80% sem tratamento. Aciclovir IV em dose alta reduz mortalidade "
+        "da doença disseminada para ~30% e melhora desfechos neurológicos.",
+        "Não há alternativa — aciclovir é o único aprovado e eficaz para herpes neonatal",
+        "Não se aplica",
+        "EMERGÊNCIA NEONATAL. Colher culturas e PCR antes de iniciar mas NÃO atrasar tratamento. "
+        "Cesárea indicada se lesões herpéticas ativas no momento do parto.",
+        "A", "I", "PCDT-HIV", 2022
+    ),
+    (
+        "Síndrome Congênita do Zika",
+        "Tratamento suportivo e reabilitação",
+        None,
+        "Não há antiviral específico. Tratamento multidisciplinar: fisioterapia motora, fonoaudiologia, "
+        "terapia ocupacional, neurologia pediátrica (anticonvulsivantes se epilepsia), oftalmologia.",
+        "Acompanhamento longitudinal (anos)",
+        "Não existe antiviral aprovado para Zika. O foco é reabilitação neuromotora precoce e controle "
+        "de comorbidades (epilepsia, espasticidade, déficit visual e auditivo).",
+        "Não se aplica",
+        "Não se aplica",
+        "PCDT MS 2016/2022 garante acesso gratuito à rede de reabilitação pelo SUS. "
+        "Microcefalia grave associada a pior prognóstico neurológico. "
+        "Benefício Prestação Continuada (BPC) pode ser solicitado para crianças afetadas.",
+        "A", "III", "SVS-DENGUE", 2022
+    ),
+
+    # ══════════════════════════════════════════════════════════════════
+    # RETROVIROSES — HTLV
+    # ══════════════════════════════════════════════════════════════════
+    (
+        "HTLV — Leucemia/Linfoma de Células T do Adulto (ATLL)",
+        "Zidovudina (AZT)",
+        "+ Interferon-alfa",
+        "Forma indolente/smoldering: AZT 600 mg/dia VO + IFN-alfa 3–5 MUI SC 3×/semana. "
+        "Forma agressiva (aguda/linfomatosa): quimioterapia CHOP ou CHOP-like ± mogamulizumabe (anti-CCR4).",
+        "Contínuo (formas indolentes) / 6–8 ciclos (quimioterapia)",
+        "AZT + IFN-alfa melhora sobrevida nas formas indolentes do ATLL. Formas agressivas têm prognóstico "
+        "reservado — mediana de sobrevida < 12 meses mesmo com quimioterapia.",
+        "IFN-alfa isolado se intolerância a AZT",
+        "Mogamulizumabe (anti-CCR4) — aprovado para ATLL refratário (disponibilidade limitada no Brasil)",
+        "HTLV-1 é endêmico na Bahia, Pernambuco e Maranhão. Triagem em bancos de sangue obrigatória no Brasil. "
+        "Transplante alogênico de medula pode ser curativo em casos selecionados.",
+        "B", "II", "SVS-HTLV", 2022
+    ),
+    (
+        "HTLV — Mielopatia Associada ao HTLV / Paraparesia Espástica Tropical (HAM/TSP)",
+        "Metilprednisolona",
+        None,
+        "Fase aguda/surto: Metilprednisolona 1 g IV/dia × 3–5 dias. Manutenção: Prednisona 40–60 mg/dia VO "
+        "com redução gradual. Fisioterapia motora intensiva contínua.",
+        "Pulsoterapia × 3–5 dias + manutenção crônica com fisioterapia",
+        "HAM/TSP é progressiva — não há cura. Corticosteroides reduzem inflamação medular e podem "
+        "estabilizar a progressão. Fisioterapia é essencial para manutenção da função motora.",
+        "Pentoxifilina 400 mg VO 8/8h — alternativa imunomoduladora com menor toxicidade",
+        "Não há alternativa antiviral eficaz estabelecida",
+        "Bexiga neurogênica é complicação frequente — urologia e cateterismo intermitente. "
+        "Espasticidade: baclofeno 5–20 mg VO 8/8h. Suporte psicológico e social essenciais.",
+        "B", "II", "SVS-HTLV", 2022
+    ),
 ]

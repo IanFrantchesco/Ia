@@ -298,6 +298,13 @@ FUNGOS = [
      "Inalação de esporos; transmissão aérea de pessoa a pessoa (imunocomprometidos)",
      "Humanos (comensal em pulmões de pessoas imunocompetentes saudáveis)",
      "Distribuição nacional; principal causa de pneumonia oportunista em HIV/AIDS com CD4 < 200; imunossuprimidos"),
+
+    ("Exophiala jeanselmei",
+     "Exofíala (feohifomicose, micetoma fúngico negro)",
+     "Herpotrichiellaceae", "fungo_filamentoso",
+     "Inoculação traumática com material vegetal ou solo; inalação ocasional",
+     "Solo, madeira em decomposição, plantas — ambiente tropical e subtropical",
+     "Distribuição nacional; mais frequente em Nordeste e Norte do Brasil; associada a feohifomicose subcutânea e infecções de SNC em imunocomprometidos"),
 ]
 
 CLASSES_ANTIFUNGICOS = [

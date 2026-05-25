@@ -691,3 +691,79 @@ CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_par    ON eficacia_antiparasitar
 CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_atp    ON eficacia_antiparasitario(antiparasitario_id);
 CREATE INDEX IF NOT EXISTS idx_eficacia_parasit_pat    ON eficacia_antiparasitario(patologia_id);
 CREATE INDEX IF NOT EXISTS idx_trat_padrao_parasit     ON tratamento_padrao_ouro_parasitario(patologia_id);
+
+-- ============================================================
+-- MÓDULO DOENÇAS CRÔNICAS / NÃO INFECCIOSAS
+-- Fontes: PCDT-MS, Diretrizes SBC, SBD, SBP, SBR, ABN, INCA, CFM
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS classes_medicamentos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT NOT NULL UNIQUE,
+    mecanismo_acao  TEXT,
+    alvo_terapeutico TEXT,
+    area_terapeutica TEXT  -- 'cardiovascular','metabolico','oncologico','saude_mental', etc.
+);
+
+CREATE TABLE IF NOT EXISTS medicamentos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_generico       TEXT NOT NULL UNIQUE,
+    nome_comercial      TEXT,
+    classe_id           INTEGER REFERENCES classes_medicamentos(id),
+    via_administracao   TEXT,
+    disponivel_sus      BOOLEAN DEFAULT 0,
+    anvisa_registrado   BOOLEAN DEFAULT 1,
+    observacoes         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tratamento_padrao_ouro_cronico (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id            INTEGER NOT NULL UNIQUE REFERENCES patologias(id),
+    medicamento_principal   TEXT NOT NULL,
+    combinacao              TEXT,
+    regime_resumido         TEXT,
+    duracao_resumida        TEXT,
+    justificativa           TEXT,
+    alternativa_alergia     TEXT,
+    alternativa_resistencia TEXT,
+    obs_especiais           TEXT,
+    grau_recomendacao       TEXT CHECK(grau_recomendacao IN ('A','B','C','D')),
+    nivel_evidencia         TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id),
+    ano_diretriz            INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS posologia_cronica (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    medicamento_id      INTEGER NOT NULL REFERENCES medicamentos(id),
+    patologia_id        INTEGER REFERENCES patologias(id),
+    populacao           TEXT,
+    dose_unitaria       TEXT,
+    frequencia          TEXT,
+    via                 TEXT,
+    duracao_texto       TEXT,
+    ajuste_renal        BOOLEAN DEFAULT 0,
+    ajuste_hepatico     BOOLEAN DEFAULT 0,
+    meta_terapeutica    TEXT,
+    observacoes         TEXT,
+    fonte_id            INTEGER REFERENCES fontes_oficiais(id)
+);
+
+CREATE TABLE IF NOT EXISTS interacoes_medicamentos (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    medicamento_id          INTEGER NOT NULL REFERENCES medicamentos(id),
+    medicamento_interagente TEXT NOT NULL,
+    classe_interagente      TEXT,
+    mecanismo               TEXT,
+    gravidade               TEXT CHECK(gravidade IN ('grave','moderada','leve','contraindicada')),
+    efeito_clinico          TEXT,
+    conduta                 TEXT,
+    fonte_id                INTEGER REFERENCES fontes_oficiais(id)
+);
+
+-- Índices doenças crônicas
+CREATE INDEX IF NOT EXISTS idx_medicamentos_classe      ON medicamentos(classe_id);
+CREATE INDEX IF NOT EXISTS idx_posologia_cronica_med    ON posologia_cronica(medicamento_id);
+CREATE INDEX IF NOT EXISTS idx_posologia_cronica_pat    ON posologia_cronica(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_interacoes_med_id        ON interacoes_medicamentos(medicamento_id);
+CREATE INDEX IF NOT EXISTS idx_trat_padrao_cronico_pat  ON tratamento_padrao_ouro_cronico(patologia_id);

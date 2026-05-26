@@ -3,14 +3,24 @@ Backend FastAPI — Brasil Político
 Dashboard comparativo de presidentes (1930-2024)
 """
 
+import logging
+import os
+import sqlite3
+from collections import defaultdict
+from contextlib import contextmanager
+from pathlib import Path
+from typing import List
+
+import anthropic
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import List
-import sqlite3
-import os
-from pathlib import Path
+from pydantic import BaseModel, field_validator
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger(__name__)
 
 DB_PATH      = Path(__file__).parent / "output" / "brasil_economico.db"
 DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.sqlite"
@@ -18,31 +28,87 @@ STATIC       = Path(__file__).parent / "static"
 
 app = FastAPI(title="Brasil Político + Patologias Bacterianas")
 
+_cache: dict = {}
+
+EVIDENCIA_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
+LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
+
+CAMPOS_ANALISE = {
+    "presidente", "ano_inicio", "ano_fim", "partido",
+    "media_crescimento_pib", "media_pib_per_capita", "media_inflacao",
+    "media_desemprego", "media_selic", "media_cambio", "media_divida_pib",
+    "media_resultado_primario", "media_reservas", "media_exportacoes",
+    "media_importacoes", "media_balanca_comercial", "media_ied",
+    "media_fbcf", "media_gini", "media_idh", "media_pobreza",
+    "media_esperanca_vida", "media_mortalidade", "media_salario_min",
+}
+
 # ── helpers ────────────────────────────────────────────────────────────────
 
+@contextmanager
 def conn():
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=5000")
+    try:
+        yield db
+    finally:
+        db.close()
 
+
+@contextmanager
 def conn_bact():
-    c = sqlite3.connect(DB_BACT_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+    db = sqlite3.connect(DB_BACT_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=5000")
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ── startup ────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def startup_check():
+    for path, name in [
+        (DB_PATH,      "brasil_economico"),
+        (DB_BACT_PATH, "patologias_bacterianas"),
+    ]:
+        if path.exists():
+            log.info("DB ok: %s", path.name)
+        else:
+            log.error("DB não encontrado: %s", path)
+
 
 # ── endpoints ──────────────────────────────────────────────────────────────
 
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "dbs": {
+            "brasil_economico":       DB_PATH.exists(),
+            "patologias_bacterianas": DB_BACT_PATH.exists(),
+        },
+    }
+
+
 @app.get("/api/presidentes")
 def list_presidentes():
-    with conn() as db:
-        rows = db.execute("""
-            SELECT DISTINCT presidente, partido, fase,
-                   MIN(ano) as ano_inicio, MAX(ano) as ano_fim
-            FROM indicadores_brasil
-            GROUP BY presidente
-            ORDER BY MIN(ano)
-        """).fetchall()
-    return [dict(r) for r in rows]
+    if "presidentes" not in _cache:
+        with conn() as db:
+            rows = db.execute("""
+                SELECT DISTINCT presidente, partido, fase,
+                       MIN(ano) as ano_inicio, MAX(ano) as ano_fim
+                FROM indicadores_brasil
+                GROUP BY presidente
+                ORDER BY MIN(ano)
+            """).fetchall()
+        _cache["presidentes"] = [dict(r) for r in rows]
+    return _cache["presidentes"]
 
 
 @app.get("/api/resumo/{presidente}")
@@ -84,6 +150,19 @@ def get_resumo(presidente: str):
 class AnaliseRequest(BaseModel):
     presidentes: List[dict]
 
+    @field_validator("presidentes")
+    @classmethod
+    def valida_presidentes(cls, v):
+        if not v:
+            raise ValueError("Ao menos 1 presidente é obrigatório")
+        if len(v) > 3:
+            raise ValueError("Máximo de 3 presidentes por análise")
+        for p in v:
+            invalidos = set(p.keys()) - CAMPOS_ANALISE
+            if invalidos:
+                raise ValueError(f"Campos não permitidos: {invalidos}")
+        return v
+
 
 @app.post("/api/analise")
 def gerar_analise(req: AnaliseRequest):
@@ -94,8 +173,6 @@ def gerar_analise(req: AnaliseRequest):
             detail="ANTHROPIC_API_KEY não configurada. "
                    "Defina a variável de ambiente para ativar a análise por IA."
         )
-
-    import anthropic
 
     linhas = []
     for p in req.presidentes:
@@ -164,36 +241,37 @@ Responda em português brasileiro."""
 # PATOLOGIAS BACTERIANAS – endpoints
 # ══════════════════════════════════════════════════════════════════════════
 
-EVIDENCIA_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
-LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
-
-
 @app.get("/api/bacterias/categorias")
 def bact_categorias():
-    with conn_bact() as db:
-        rows = db.execute(
-            "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
-        ).fetchall()
-    return [dict(r) for r in rows]
+    if "categorias" not in _cache:
+        with conn_bact() as db:
+            rows = db.execute(
+                "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
+            ).fetchall()
+        _cache["categorias"] = [dict(r) for r in rows]
+    return _cache["categorias"]
 
 
 @app.get("/api/bacterias/patologias")
 def bact_patologias(categoria_id: int = None):
-    sql = """
-        SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
-               p.notificacao_compulsoria, p.tipo_notificacao,
-               c.nome AS categoria
-        FROM patologias p
-        JOIN categorias_patologias c ON c.id = p.categoria_id
-    """
-    params = []
-    if categoria_id:
-        sql += " WHERE p.categoria_id = ?"
-        params.append(categoria_id)
-    sql += " ORDER BY p.nome"
-    with conn_bact() as db:
-        rows = db.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    key = f"patologias:{categoria_id}"
+    if key not in _cache:
+        sql = """
+            SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+                   p.notificacao_compulsoria, p.tipo_notificacao,
+                   c.nome AS categoria
+            FROM patologias p
+            JOIN categorias_patologias c ON c.id = p.categoria_id
+        """
+        params = []
+        if categoria_id:
+            sql += " WHERE p.categoria_id = ?"
+            params.append(categoria_id)
+        sql += " ORDER BY p.nome"
+        with conn_bact() as db:
+            rows = db.execute(sql, params).fetchall()
+        _cache[key] = [dict(r) for r in rows]
+    return _cache[key]
 
 
 @app.get("/api/bacterias/patologia/{patologia_id}")
@@ -225,9 +303,9 @@ def bact_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
-        # Top 3 antibióticos mais eficazes para esta patologia
         antibioticos = db.execute(
             """SELECT
+                a.id AS antibiotico_id,
                 a.nome_generico, a.nome_comercial, a.via_administracao,
                 a.disponivel_sus,
                 ca.nome AS classe,
@@ -246,7 +324,6 @@ def bact_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
-        # Se não encontrou por patologia_id, busca pela bactéria principal
         if not antibioticos and bacterias:
             bact_principal = bacterias[0]["nome_cientifico"]
             bact_id_row = db.execute(
@@ -256,6 +333,7 @@ def bact_detalhe(patologia_id: int):
             if bact_id_row:
                 antibioticos = db.execute(
                     """SELECT
+                        a.id AS antibiotico_id,
                         a.nome_generico, a.nome_comercial, a.via_administracao,
                         a.disponivel_sus,
                         ca.nome AS classe,
@@ -287,85 +365,88 @@ def bact_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchone()
 
-    def enrich_atb(r):
-        ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
-        ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-        seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
-        sus = 100 if r["disponivel_sus"] else 0
+        # Bulk-fetch posologias e interacoes (elimina N+1: 2 queries em vez de 2×N)
+        atb_ids = [r["antibiotico_id"] for r in antibioticos]
+        posologias_by_id: defaultdict = defaultdict(list)
+        interacoes_by_id: defaultdict = defaultdict(list)
 
-        atb_id = db.execute(
-            "SELECT id FROM antibioticos WHERE nome_generico = ?",
-            (r["nome_generico"],),
-        ).fetchone()
-        atb_id = atb_id["id"] if atb_id else None
+        if atb_ids:
+            ph = ",".join("?" * len(atb_ids))
+            for row in db.execute(
+                f"""SELECT po.antibiotico_id, po.populacao, po.dose_unitaria,
+                           po.frequencia, po.via, po.duracao_min_dias,
+                           po.duracao_max_dias, po.duracao_texto,
+                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
+                           fo.sigla AS fonte
+                    FROM posologia po
+                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                    WHERE po.antibiotico_id IN ({ph})
+                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                    ORDER BY po.antibiotico_id, po.patologia_id DESC, po.populacao""",
+                (*atb_ids, pat["id"]),
+            ).fetchall():
+                d = dict(row)
+                posologias_by_id[d.pop("antibiotico_id")].append(d)
 
-        posologias = []
-        interacoes = []
-        if atb_id:
-            pos_rows = db.execute(
-                """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
-                          po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
-                          po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                          fo.sigla AS fonte
-                   FROM posologia po
-                   LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                   WHERE po.antibiotico_id = ?
-                     AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                   ORDER BY po.patologia_id DESC, po.populacao""",
-                (atb_id, pat["id"]),
-            ).fetchall()
-            posologias = [dict(p) for p in pos_rows]
+            for row in db.execute(
+                f"""SELECT i.antibiotico_id, i.medicamento_interagente,
+                           i.classe_interagente, i.mecanismo, i.gravidade,
+                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
+                    FROM interacoes_medicamentosas i
+                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                    WHERE i.antibiotico_id IN ({ph})
+                    ORDER BY i.antibiotico_id,
+                      CASE i.gravidade
+                        WHEN 'contraindicada' THEN 1
+                        WHEN 'grave'          THEN 2
+                        WHEN 'moderada'       THEN 3
+                        WHEN 'leve'           THEN 4
+                      END""",
+                atb_ids,
+            ).fetchall():
+                d = dict(row)
+                interacoes_by_id[d.pop("antibiotico_id")].append(d)
 
-            inter_rows = db.execute(
-                """SELECT i.medicamento_interagente, i.classe_interagente,
-                          i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
-                          fo.sigla AS fonte
-                   FROM interacoes_medicamentosas i
-                   LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                   WHERE i.antibiotico_id = ?
-                   ORDER BY
-                     CASE i.gravidade
-                       WHEN 'contraindicada' THEN 1
-                       WHEN 'grave'          THEN 2
-                       WHEN 'moderada'       THEN 3
-                       WHEN 'leve'           THEN 4
-                     END""",
-                (atb_id,),
-            ).fetchall()
-            interacoes = [dict(i) for i in inter_rows]
+        def enrich_atb(r):
+            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
+            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
+            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
+            sus = 100 if r["disponivel_sus"] else 0
+            aid = r["antibiotico_id"]
+            return {
+                "nome_generico":      r["nome_generico"],
+                "nome_comercial":     r["nome_comercial"],
+                "via":                r["via_administracao"],
+                "disponivel_sus":     bool(r["disponivel_sus"]),
+                "classe":             r["classe"],
+                "bacteria":           r["bacteria"],
+                "eficacia_pct":       r["eficacia_pct"],
+                "linha_tratamento":   r["linha_tratamento"],
+                "nivel_evidencia":    r["nivel_evidencia"],
+                "resistencia_br_pct": r["resistencia_br_pct"],
+                "consideracoes":      r["consideracoes"],
+                "fonte":              r["fonte"],
+                "fonte_nome":         r["fonte_nome"],
+                "fonte_ano":          r["fonte_ano"],
+                "radar": {
+                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
+                    "seguranca":      round(seg, 1),
+                    "evidencia":      ev,
+                    "primeira_linha": ln,
+                    "acesso_sus":     sus,
+                },
+                "posologias": posologias_by_id[aid],
+                "interacoes": interacoes_by_id[aid],
+            }
 
-        return {
-            "nome_generico":      r["nome_generico"],
-            "nome_comercial":     r["nome_comercial"],
-            "via":                r["via_administracao"],
-            "disponivel_sus":     bool(r["disponivel_sus"]),
-            "classe":             r["classe"],
-            "bacteria":           r["bacteria"],
-            "eficacia_pct":       r["eficacia_pct"],
-            "linha_tratamento":   r["linha_tratamento"],
-            "nivel_evidencia":    r["nivel_evidencia"],
-            "resistencia_br_pct": r["resistencia_br_pct"],
-            "consideracoes":      r["consideracoes"],
-            "fonte":              r["fonte"],
-            "fonte_nome":         r["fonte_nome"],
-            "fonte_ano":          r["fonte_ano"],
-            "radar": {
-                "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                "seguranca":      round(seg, 1),
-                "evidencia":      ev,
-                "primeira_linha": ln,
-                "acesso_sus":     sus,
-            },
-            "posologias":         posologias,
-            "interacoes":         interacoes,
+        result = {
+            "patologia":         dict(pat),
+            "bacterias":         [dict(b) for b in bacterias],
+            "top3_antibioticos": [enrich_atb(r) for r in antibioticos],
+            "tratamento_padrao": dict(tratamento) if tratamento else None,
         }
 
-    return {
-        "patologia":          dict(pat),
-        "bacterias":          [dict(b) for b in bacterias],
-        "top3_antibioticos":  [enrich_atb(r) for r in antibioticos],
-        "tratamento_padrao":  dict(tratamento) if tratamento else None,
-    }
+    return result
 
 
 # ── static (deve ser o último mount) ───────────────────────────────────────

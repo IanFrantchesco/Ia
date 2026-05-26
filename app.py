@@ -5,6 +5,7 @@ Dashboard comparativo de presidentes (1930-2024)
 
 import logging
 import os
+import re
 import sqlite3
 from collections import defaultdict
 from contextlib import contextmanager
@@ -1436,6 +1437,113 @@ def cronicas_patologias(categoria_id: int = None):
 def cronicas_detalhe(patologia_id: int):
     GRAU_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
 
+    def _extract_first_drug(text: str) -> str | None:
+        """Return the drug name from a text that may include dose and combinations."""
+        if not text:
+            return None
+        # Take only the first drug before any + / & separator
+        part = re.split(r"\s*[+/&]\s*", text)[0].strip()
+        # Strip trailing dose info (digit, parenthesis)
+        name = re.split(r"\s+\d|\s+\(", part)[0].strip()
+        return name or None
+
+    def _lookup_med(db, nome_raw):
+        """3-step cascade lookup in the medicamentos table."""
+        if not nome_raw:
+            return None
+        for query, param in [
+            ("WHERE m.nome_generico = ?", nome_raw),
+            ("WHERE LOWER(m.nome_generico) = LOWER(?)", nome_raw),
+            ("WHERE LOWER(m.nome_generico) LIKE LOWER(?) LIMIT 1",
+             nome_raw.split()[0].lower() + "%"),
+        ]:
+            row = db.execute(
+                f"""SELECT m.id, m.nome_generico, m.nome_comercial,
+                           m.via_administracao, m.disponivel_sus,
+                           cm.nome AS classe
+                    FROM medicamentos m
+                    LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
+                    {query}""",
+                (param,),
+            ).fetchone()
+            if row:
+                return row
+        return None
+
+    def _build_card(db, nome_raw, role_label, tratamento, grau_score, patologia_id, linha):
+        """Build one drug card for a chronic pathology; returns None if nome_raw is blank."""
+        nome_clean = _extract_first_drug(nome_raw)
+        if not nome_clean:
+            return None
+        med_row = _lookup_med(db, nome_clean)
+
+        radar = {
+            "evidencia":    EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25),
+            "recomendacao": grau_score.get(tratamento["grau_recomendacao"] or "D", 25),
+            "acesso_sus":   100 if (med_row and med_row["disponivel_sus"]) else 0,
+        }
+
+        posologias, interacoes = [], []
+        if med_row:
+            mid = med_row["id"]
+            posologias = [
+                {k: v for k, v in dict(r).items() if k != "medicamento_id"}
+                for r in db.execute(
+                    """SELECT po.medicamento_id, po.populacao, po.dose_unitaria,
+                              po.frequencia, po.via, po.duracao_texto,
+                              po.ajuste_renal, po.ajuste_hepatico,
+                              po.meta_terapeutica, po.observacoes,
+                              fo.sigla AS fonte
+                       FROM posologia_cronica po
+                       LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                       WHERE po.medicamento_id = ?
+                         AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                       ORDER BY po.patologia_id DESC, po.populacao""",
+                    (mid, patologia_id),
+                ).fetchall()
+            ]
+            interacoes = [
+                {k: v for k, v in dict(r).items() if k != "medicamento_id"}
+                for r in db.execute(
+                    """SELECT i.medicamento_id, i.medicamento_interagente,
+                              i.classe_interagente, i.mecanismo, i.gravidade,
+                              i.efeito_clinico, i.conduta, fo.sigla AS fonte
+                       FROM interacoes_medicamentos i
+                       LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                       WHERE i.medicamento_id = ?
+                       ORDER BY CASE i.gravidade
+                         WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
+                         WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
+                    (mid,),
+                ).fetchall()
+            ]
+
+        # When posologia is missing, fall back to the regime text so the tab isn't empty
+        if not posologias and tratamento["regime_resumido"]:
+            posologias = [{"regime_texto": tratamento["regime_resumido"]}]
+
+        return {
+            "nome_generico":      med_row["nome_generico"] if med_row else nome_clean,
+            "nome_comercial":     med_row["nome_comercial"] if med_row else None,
+            "via":                med_row["via_administracao"] if med_row else None,
+            "disponivel_sus":     bool(med_row["disponivel_sus"]) if med_row else False,
+            "classe":             med_row["classe"] if med_row else None,
+            "agente":             None,
+            "eficacia_pct":       None,
+            "linha_tratamento":   linha,
+            "nivel_evidencia":    tratamento["nivel_evidencia"],
+            "resistencia_br_pct": None,
+            "consideracoes":      tratamento["regime_resumido"] if linha == 1 else nome_raw,
+            "role_label":         role_label,
+            "fonte":              tratamento["fonte_sigla"],
+            "fonte_nome":         tratamento["fonte_nome"],
+            "fonte_ano":          None,
+            "is_fallback":        med_row is None,
+            "radar":              radar,
+            "posologias":         posologias,
+            "interacoes":         interacoes,
+        }
+
     with conn_bact() as db:
         pat = db.execute(
             """SELECT p.id, p.nome, p.cid10, p.descricao,
@@ -1466,136 +1574,18 @@ def cronicas_detalhe(patologia_id: int):
         ).fetchone()
 
         top3_medicamentos = []
-
         if tratamento and tratamento["medicamento_principal"]:
-            med_nome = tratamento["medicamento_principal"]
-            med_row = db.execute(
-                """SELECT m.id, m.nome_generico, m.nome_comercial,
-                          m.via_administracao, m.disponivel_sus,
-                          cm.nome AS classe
-                   FROM medicamentos m
-                   LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
-                   WHERE m.nome_generico = ?""",
-                (med_nome,),
-            ).fetchone()
-            if not med_row:
-                med_row = db.execute(
-                    """SELECT m.id, m.nome_generico, m.nome_comercial,
-                              m.via_administracao, m.disponivel_sus,
-                              cm.nome AS classe
-                       FROM medicamentos m
-                       LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
-                       WHERE LOWER(m.nome_generico) = LOWER(?)""",
-                    (med_nome,),
-                ).fetchone()
-            if not med_row:
-                first_word = med_nome.split()[0]
-                med_row = db.execute(
-                    """SELECT m.id, m.nome_generico, m.nome_comercial,
-                              m.via_administracao, m.disponivel_sus,
-                              cm.nome AS classe
-                       FROM medicamentos m
-                       LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
-                       WHERE LOWER(m.nome_generico) LIKE LOWER(?)
-                       LIMIT 1""",
-                    (first_word.lower() + "%",),
-                ).fetchone()
-
-            if med_row:
-                med = dict(med_row)
-                med_id = med["id"]
-
-                posologias_rows = db.execute(
-                    """SELECT po.medicamento_id, po.populacao, po.dose_unitaria,
-                              po.frequencia, po.via, po.duracao_texto,
-                              po.ajuste_renal, po.ajuste_hepatico,
-                              po.meta_terapeutica, po.observacoes,
-                              fo.sigla AS fonte
-                       FROM posologia_cronica po
-                       LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                       WHERE po.medicamento_id = ?
-                         AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                       ORDER BY po.patologia_id DESC, po.populacao""",
-                    (med_id, patologia_id),
-                ).fetchall()
-
-                interacoes_rows = db.execute(
-                    """SELECT i.medicamento_id, i.medicamento_interagente,
-                              i.classe_interagente, i.mecanismo, i.gravidade,
-                              i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                       FROM interacoes_medicamentos i
-                       LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                       WHERE i.medicamento_id = ?
-                       ORDER BY CASE i.gravidade
-                         WHEN 'contraindicada' THEN 1
-                         WHEN 'grave'          THEN 2
-                         WHEN 'moderada'       THEN 3
-                         WHEN 'leve'           THEN 4
-                       END""",
-                    (med_id,),
-                ).fetchall()
-
-                posologias = [
-                    {k: v for k, v in dict(r).items() if k != "medicamento_id"}
-                    for r in posologias_rows
-                ]
-                interacoes = [
-                    {k: v for k, v in dict(r).items() if k != "medicamento_id"}
-                    for r in interacoes_rows
-                ]
-
-                radar = {
-                    "evidencia":    EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25),
-                    "recomendacao": GRAU_SCORE.get(tratamento["grau_recomendacao"] or "D", 25),
-                    "acesso_sus":   100 if med["disponivel_sus"] else 0,
-                }
-
-                top3_medicamentos = [{
-                    "nome_generico":      med["nome_generico"],
-                    "nome_comercial":     med["nome_comercial"],
-                    "via":                med["via_administracao"],
-                    "disponivel_sus":     bool(med["disponivel_sus"]),
-                    "classe":             med["classe"],
-                    "agente":             None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        False,
-                    "radar":              radar,
-                    "posologias":         posologias,
-                    "interacoes":         interacoes,
-                }]
-            else:
-                radar = {
-                    "evidencia":    EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25),
-                    "recomendacao": GRAU_SCORE.get(tratamento["grau_recomendacao"] or "D", 25),
-                    "acesso_sus":   0,
-                }
-                top3_medicamentos = [{
-                    "nome_generico":      med_nome,
-                    "nome_comercial":     None,
-                    "via":                None,
-                    "disponivel_sus":     False,
-                    "classe":             None,
-                    "agente":             None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar":              radar,
-                    "posologias":         [],
-                    "interacoes":         [],
-                }]
+            candidates = [
+                (tratamento["medicamento_principal"], "Medicamento Principal",      1),
+                (tratamento["combinacao"],            "Em Combinação",              2),
+                (tratamento["alternativa_alergia"],   "Alternativa / 2ª Escolha",  3),
+            ]
+            for nome_raw, role_label, linha in candidates:
+                card = _build_card(
+                    db, nome_raw, role_label, tratamento, GRAU_SCORE, patologia_id, linha
+                )
+                if card:
+                    top3_medicamentos.append(card)
 
         result = {
             "dominio":           "cronico",

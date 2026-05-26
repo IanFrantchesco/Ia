@@ -394,6 +394,8 @@
     .pos-pop.ren  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
     .pos-obs  { font-size: .65rem; color: var(--muted); margin-top: .2rem; line-height: 1.4; }
     .meta-row td { font-size: .68rem; color: #4338ca; background: #f5f3ff; }
+    .pos-regime { display:flex; gap:.6rem; align-items:flex-start; font-size:.73rem; color:var(--text); line-height:1.5; padding:.5rem .2rem; }
+    .pos-regime-icon { font-size:1.1rem; flex-shrink:0; margin-top:.1rem; }
 
     /* Interactions */
     .inter-list { display: flex; flex-direction: column; gap: .4rem; }
@@ -680,6 +682,10 @@ function agentTags(a, d) {
 // ── Posology ──────────────────────────────────────────────────────────────
 function buildPosology(poss) {
   if (!poss?.length) return '<p class="no-data">Sem dados de posologia cadastrados.</p>';
+  // Synthetic regime-text entry (from tratamento.regime_resumido fallback)
+  if (poss.length === 1 && poss[0].regime_texto) {
+    return `<div class="pos-regime"><span class="pos-regime-icon">💊</span><div><strong>Regime recomendado</strong><br>${poss[0].regime_texto}</div></div>`;
+  }
   const popL={adulto:'Adulto',pediatrico:'Pediátrico',gestante:'Gestante',idoso:'Idoso',insuf_renal:'Insuf. Renal',insuf_hepatica:'Insuf. Hepática'};
   const popC={adulto:'',pediatrico:'ped',gestante:'gest',idoso:'',insuf_renal:'ren',insuf_hepatica:'ren'};
   return `<table class="pos-table">
@@ -740,7 +746,9 @@ function renderDetail(data) {
       </div>`).join('')}</div>` : '';
 
   // Drug cards
-  const rankL=['🥇 1º mais eficaz','🥈 2º mais eficaz','🥉 3º mais eficaz'];
+  const rankL=isChr
+    ?['🥇 Principal','🥈 Combinação','🥉 Alternativa']
+    :['🥇 1º mais eficaz','🥈 2º mais eficaz','🥉 3º mais eficaz'];
   let drugsHtml = '';
   atbs.forEach((a,i) => {
     const uid=`d${i}`, ic=(a.interacoes||[]).length;
@@ -761,7 +769,7 @@ function renderDetail(data) {
     }
     drugsHtml+=`
       <div class="drug-card r${i+1}">
-        <div class="d-rank">${rankL[i]}${a.is_fallback?'<span class="tag-guideline" title="Baseado em diretriz clínica — sem dados de eficácia comparativa"> Diretriz</span>':''}</div>
+        <div class="d-rank">${isChr&&a.role_label?a.role_label:rankL[i]}${a.is_fallback?'<span class="tag-guideline" title="Baseado em diretriz clínica — sem dados de eficácia comparativa"> Diretriz</span>':''}</div>
         <div class="d-name">${a.nome_generico}</div>
         <div class="d-com">${a.nome_comercial||''}</div>
         <div class="d-meta">

@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+database/_trat_*.py

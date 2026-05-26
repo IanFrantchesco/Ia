@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patologias — Painel Clínico Brasil</title>
+  <script src="chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #111827;
+      --glass:     rgba(255,255,255,0.04);
+      --border:    rgba(255,255,255,0.08);
+      --accent:    #38bdf8;
+      --accent2:   #818cf8;
+      --accent3:   #34d399;
+      --warn:      #f59e0b;
+      --danger:    #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --radius:    14px;
+      --shadow:    0 4px 32px rgba(0,0,0,.45);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; }
+    header p  { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    header .back-link {
+      margin-left: auto;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: .85rem;
+      display: flex; align-items: center; gap: .3rem;
+      transition: color .2s;
+    }
+    header .back-link:hover { color: var(--accent); }
+
+    /* ── Domain tab bar ─────────────────────────────────────────────── */
+    .domain-tabs {
+      background: #0d1220;
+      border-bottom: 1px solid var(--border);
+      padding: .75rem 2rem;
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .domain-tab {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: .82rem;
+      font-weight: 700;
+      padding: .45rem 1rem;
+      cursor: pointer;
+      transition: color .2s, background .2s, border-color .2s, transform .15s;
+      letter-spacing: .02em;
+      white-space: nowrap;
+    }
+    .domain-tab:hover {
+      color: var(--text);
+      background: rgba(255,255,255,.07);
+      border-color: rgba(255,255,255,.18);
+      transform: translateY(-1px);
+    }
+    .domain-tab.active {
+      color: var(--accent);
+      background: rgba(56,189,248,.1);
+      border-color: rgba(56,189,248,.35);
+    }
+    @media (max-width: 640px) {
+      .domain-tabs { padding: .6rem 1rem; gap: .35rem; }
+      .domain-tab  { font-size: .75rem; padding: .4rem .7rem; }
+    }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    main { max-width: 1280px; margin: 0 auto; padding: 2rem; }
+
+    /* ── Search / filter panel ────────────────────────────────────────── */
+    .search-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 640px) { .search-panel { grid-template-columns: 1fr; } }
+
+    label { font-size: .78rem; color: var(--muted); font-weight: 600;
+            text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: .4rem; }
+
+    select, input {
+      width: 100%;
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: .65rem .9rem;
+      font-size: .9rem;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(56,189,248,.15);
+    }
+    option { background: #1e293b; }
+
+    /* ── Skeleton loader ─────────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface) 25%, #1e2a3a 50%, var(--surface) 75%);
+      background-size: 400% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 8px;
+    }
+    @keyframes shimmer { to { background-position: -400% 0; } }
+
+    /* ── Result section ─────────────────────────────────────────────── */
+    #result { animation: fadeIn .4s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+
+    /* ── Pathology info card ─────────────────────────────────────────── */
+    .pat-card {
+      background: linear-gradient(135deg, rgba(56,189,248,.08) 0%, rgba(129,140,248,.06) 100%);
+      border: 1px solid rgba(56,189,248,.2);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+    }
+    .pat-card h2 { font-size: 1.2rem; font-weight: 700; color: var(--accent); margin-bottom: .5rem; }
+    .pat-card .desc { font-size: .88rem; color: var(--text); line-height: 1.6; opacity: .85; }
+    .badges { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+    .badge {
+      font-size: .72rem; font-weight: 700; padding: .25rem .65rem;
+      border-radius: 99px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .badge-cid    { background: rgba(129,140,248,.15); color: var(--accent2); border: 1px solid rgba(129,140,248,.3); }
+    .badge-prev   { background: rgba(52,211,153,.12);  color: var(--accent3); border: 1px solid rgba(52,211,153,.3); }
+    .badge-mort   { background: rgba(239,68,68,.12);   color: #fca5a5;        border: 1px solid rgba(239,68,68,.3); }
+    .badge-notif  { background: rgba(245,158,11,.15);  color: var(--warn);    border: 1px solid rgba(245,158,11,.3); }
+    .badge-cat    { background: rgba(255,255,255,.06);  color: var(--muted);   border: 1px solid var(--border); }
+
+    /* ── Agent list ─────────────────────────────────────────────────── */
+    .section-title {
+      font-size: .78rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .07em;
+      margin-bottom: .85rem; margin-top: 1.5rem;
+    }
+    .bact-list { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1.5rem; }
+    .bact-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .6rem 1rem;
+      font-size: .82rem;
+      display: flex; align-items: center; gap: .5rem;
+      flex-wrap: wrap;
+    }
+    .bact-chip .sci { font-style: italic; color: var(--accent); font-weight: 600; }
+    .gram-pos { background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.25); }
+    .gram-neg { background: rgba(239,68,68,.1);  border-color: rgba(239,68,68,.25); }
+    .gram-ind { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.25); }
+    /* Viral chips */
+    .viral-rna { background: rgba(129,140,248,.1); border-color: rgba(129,140,248,.25); }
+    .viral-dna { background: rgba(56,189,248,.1);  border-color: rgba(56,189,248,.25); }
+    /* Fungal chips */
+    .fungal-lev { background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.25); }
+    .fungal-fil { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.25); }
+    .fungal-dim { background: rgba(239,68,68,.1);  border-color: rgba(239,68,68,.25); }
+    /* Parasitic chips */
+    .parasit-chip { background: rgba(163,230,53,.08); border-color: rgba(163,230,53,.2); }
+
+    .bact-role {
+      font-size: .68rem; font-weight: 700; text-transform: uppercase;
+      padding: .15rem .45rem; border-radius: 4px;
+      background: rgba(255,255,255,.06); color: var(--muted);
+    }
+
+    /* ── Charts grid ─────────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+    .chart-card h3 {
+      font-size: .9rem; font-weight: 700; margin-bottom: 1rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .chart-card canvas { width: 100% !important; }
+
+    /* ── Drug cards ─────────────────────────────────────────────────── */
+    .atb-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 900px) { .atb-cards { grid-template-columns: 1fr; } }
+
+    .atb-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .atb-card:hover { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(0,0,0,.5); }
+    .atb-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .atb-card.rank-1::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .atb-card.rank-2::before { background: linear-gradient(90deg, var(--accent2), var(--accent3)); }
+    .atb-card.rank-3::before { background: linear-gradient(90deg, var(--accent3), #a3e635); }
+
+    .atb-rank {
+      font-size: .68rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: .5rem;
+    }
+    .rank-1 .atb-rank { color: var(--accent); }
+    .rank-2 .atb-rank { color: var(--accent2); }
+    .rank-3 .atb-rank { color: var(--accent3); }
+
+    .atb-name { font-size: 1rem; font-weight: 700; margin-bottom: .2rem; }
+    .atb-com  { font-size: .78rem; color: var(--muted); margin-bottom: .75rem; font-style: italic; }
+
+    .atb-meta { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+    .tag {
+      font-size: .7rem; padding: .2rem .55rem; border-radius: 5px; font-weight: 600;
+      background: rgba(255,255,255,.05); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .tag-sus   { background: rgba(52,211,153,.12); color: var(--accent3); border-color: rgba(52,211,153,.3); }
+    .tag-linha { background: rgba(56,189,248,.1);  color: var(--accent);  border-color: rgba(56,189,248,.25); }
+    .tag-ev    { background: rgba(129,140,248,.1); color: var(--accent2); border-color: rgba(129,140,248,.25); }
+
+    .eficacia-bar { margin-bottom: .75rem; }
+    .eficacia-bar .lbl {
+      display: flex; justify-content: space-between;
+      font-size: .75rem; color: var(--muted); margin-bottom: .3rem;
+    }
+    .eficacia-bar .lbl strong { color: var(--text); font-size: .85rem; }
+    .bar-track {
+      height: 8px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ── Resistance alert ────────────────────────────────────────────── */
+    .resist-alert {
+      display: flex; align-items: flex-start; gap: .6rem;
+      background: rgba(239,68,68,.08);
+      border: 1px solid rgba(239,68,68,.25);
+      border-radius: 8px;
+      padding: .6rem .8rem;
+      font-size: .78rem; color: #fca5a5;
+      margin-bottom: .75rem;
+    }
+    .resist-alert .icon { font-size: 1rem; flex-shrink: 0; }
+    .resist-ok {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .78rem; color: var(--accent3); margin-bottom: .75rem;
+    }
+
+    /* ── Evidence badge (chronic) ───────────────────────────────────── */
+    .ev-badge-chronic {
+      display: inline-block;
+      font-size: .75rem; font-weight: 700; padding: .3rem .7rem;
+      border-radius: 6px; margin-bottom: .75rem;
+      background: rgba(129,140,248,.12); color: var(--accent2);
+      border: 1px solid rgba(129,140,248,.3);
+    }
+
+    .obs-text {
+      font-size: .78rem; color: var(--muted); line-height: 1.5;
+      border-top: 1px solid var(--border); padding-top: .75rem; margin-top: .25rem;
+    }
+
+    /* ── Tabs (posologia / interações) ──────────────────────────────── */
+    .atb-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid var(--border);
+      margin: .75rem -.1rem 0; overflow: hidden;
+    }
+    .atb-tab-btn {
+      flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--muted); font-size: .73rem; font-weight: 700; padding: .45rem .3rem;
+      cursor: pointer; text-transform: uppercase; letter-spacing: .05em;
+      transition: color .2s, border-color .2s; text-align: center;
+    }
+    .atb-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .atb-tab-panel { display: none; padding-top: .75rem; }
+    .atb-tab-panel.active { display: block; }
+
+    /* ── Posology table ──────────────────────────────────────────────── */
+    .pos-table { width: 100%; border-collapse: collapse; font-size: .74rem; }
+    .pos-table th {
+      text-align: left; color: var(--muted); font-weight: 700;
+      padding: .3rem .4rem; border-bottom: 1px solid var(--border);
+      text-transform: uppercase; font-size: .65rem; letter-spacing: .04em;
+    }
+    .pos-table td { padding: .4rem .4rem; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: top; }
+    .pos-table tr:last-child td { border-bottom: none; }
+    .pos-pop {
+      display: inline-block; font-size: .65rem; font-weight: 700; padding: .15rem .4rem;
+      border-radius: 4px; background: rgba(129,140,248,.12);
+      color: var(--accent2); border: 1px solid rgba(129,140,248,.25); white-space: nowrap;
+    }
+    .pos-pop.gest { background: rgba(245,158,11,.1); color: var(--warn); border-color: rgba(245,158,11,.25); }
+    .pos-pop.ped  { background: rgba(52,211,153,.1); color: var(--accent3); border-color: rgba(52,211,153,.25); }
+    .pos-pop.ren  { background: rgba(239,68,68,.1); color: #fca5a5; border-color: rgba(239,68,68,.25); }
+    .adj-icon { font-size: .8rem; margin-left: .3rem; }
+    .pos-obs  { font-size: .7rem; color: var(--muted); margin-top: .25rem; line-height: 1.4; }
+    .meta-row td { font-size: .72rem; color: var(--accent2); background: rgba(129,140,248,.05); }
+
+    /* ── Interactions ────────────────────────────────────────────────── */
+    .inter-list { display: flex; flex-direction: column; gap: .5rem; }
+    .inter-item {
+      border-radius: 8px; padding: .6rem .75rem; font-size: .76rem;
+      border: 1px solid;
+    }
+    .inter-item.contraindicada {
+      background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); color: #fca5a5;
+    }
+    .inter-item.grave {
+      background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.3); color: #fcd34d;
+    }
+    .inter-item.moderada {
+      background: rgba(251,191,36,.06); border-color: rgba(251,191,36,.2); color: #fde68a;
+    }
+    .inter-item.leve {
+      background: rgba(52,211,153,.06); border-color: rgba(52,211,153,.2); color: #6ee7b7;
+    }
+    .inter-header {
+      display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem;
+    }
+    .inter-drug { font-weight: 700; }
+    .inter-badge {
+      font-size: .62rem; font-weight: 800; text-transform: uppercase;
+      padding: .1rem .4rem; border-radius: 3px; background: rgba(0,0,0,.3);
+    }
+    .inter-efeito { margin-bottom: .3rem; }
+    .inter-conduta {
+      font-size: .71rem; opacity: .85; padding-top: .3rem;
+      border-top: 1px solid rgba(255,255,255,.08); margin-top: .3rem;
+    }
+    .inter-conduta strong { font-weight: 700; }
+    .no-data { font-size: .78rem; color: var(--muted); font-style: italic; }
+
+    /* ── Tratamento padrão-ouro ─────────────────────────────────────── */
+    .trat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .trat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #fbbf24, #f59e0b, #d97706);
+    }
+    .trat-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .trat-atb-principal { font-size: 1.1rem; font-weight: 800; color: #fbbf24; }
+    .trat-combinacao { font-size: .85rem; color: var(--muted); font-style: italic; margin-top: .15rem; }
+    .trat-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .badge-grau {
+      font-size: .7rem; font-weight: 800; padding: .25rem .6rem;
+      border-radius: 5px; text-transform: uppercase; letter-spacing: .06em;
+      background: rgba(251,191,36,.15); color: #fbbf24;
+      border: 1px solid rgba(251,191,36,.3);
+    }
+    .badge-ev {
+      font-size: .7rem; font-weight: 700; padding: .25rem .6rem;
+      border-radius: 5px;
+      background: rgba(129,140,248,.1); color: var(--accent2);
+      border: 1px solid rgba(129,140,248,.25);
+    }
+    .trat-regime {
+      background: rgba(251,191,36,.06);
+      border: 1px solid rgba(251,191,36,.15);
+      border-radius: 8px;
+      padding: .75rem 1rem;
+      font-size: .88rem; line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .trat-duracao { font-size: .78rem; color: #fbbf24; font-weight: 700; margin-bottom: 1rem; }
+    .trat-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: 1rem;
+    }
+    @media (max-width: 700px) { .trat-grid { grid-template-columns: 1fr; } }
+    .trat-section {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: .7rem .9rem; font-size: .8rem;
+    }
+    .trat-section-title {
+      font-size: .68rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: .4rem;
+    }
+    .trat-section-body { line-height: 1.55; color: var(--text); }
+    .trat-justif {
+      font-size: .82rem; color: var(--muted); line-height: 1.6;
+      border-top: 1px solid var(--border); padding-top: .85rem;
+    }
+    .trat-obs {
+      font-size: .78rem; color: #fbbf24; opacity: .9; line-height: 1.5;
+      background: rgba(251,191,36,.05);
+      border: 1px solid rgba(251,191,36,.15);
+      border-radius: 8px; padding: .65rem .9rem; margin-top: .75rem;
+    }
+    .trat-fonte {
+      font-size: .7rem; color: var(--muted); margin-top: .75rem;
+      display: flex; gap: .4rem; align-items: center; flex-wrap: wrap;
+    }
+
+    /* ── Source footnote ────────────────────────────────────────────── */
+    .source-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      font-size: .76rem; color: var(--muted);
+      display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+    }
+    .source-bar span { font-weight: 700; color: var(--text); }
+    .source-chip {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 5px; padding: .15rem .45rem; font-size: .7rem;
+    }
+
+    /* ── Empty / loading states ─────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 4rem 2rem;
+      color: var(--muted); font-size: .95rem;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: .4; }
+    .loading-dots span {
+      display: inline-block; width: 8px; height: 8px;
+      background: var(--accent); border-radius: 50%; margin: 0 3px;
+      animation: bounce .8s infinite alternate;
+    }
+    .loading-dots span:nth-child(2) { animation-delay: .15s; }
+    .loading-dots span:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce { to { transform: translateY(-8px); opacity: .4; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏥</div>
+  <div>
+    <h1>Painel de Patologias</h1>
+    <p>Eficácia terapêutica por patologia · Fontes oficiais MS / ANVISA / SBI</p>
+  </div>
+  <a href="index.html" class="back-link">← Dashboard</a>
+</header>
+
+<div class="domain-tabs">
+  <button class="domain-tab active" data-domain="bacteriana">🦠 Bacterianas</button>
+  <button class="domain-tab" data-domain="viral">🧬 Virais</button>
+  <button class="domain-tab" data-domain="fungica">🍄 Fúngicas</button>
+  <button class="domain-tab" data-domain="parasitaria">🪱 Parasitárias</button>
+  <button class="domain-tab" data-domain="cronica">❤️ Crônicas</button>
+</div>
+
+<main>
+  <!-- Search panel -->
+  <div class="search-panel">
+    <div>
+      <label for="sel-categoria">Filtrar por categoria</label>
+      <select id="sel-categoria">
+        <option value="">Todas as categorias</option>
+      </select>
+    </div>
+    <div>
+      <label for="sel-patologia">Selecione a patologia</label>
+      <select id="sel-patologia">
+        <option value="">— selecione —</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Result area -->
+  <div id="result">
+    <div class="empty-state">
+      <div class="icon">🔬</div>
+      <p>Selecione um domínio e uma patologia para visualizar os medicamentos mais eficazes e o comparativo gráfico.</p>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── Colours per rank ────────────────────────────────────────────────────
+const COLORS = [
+  { line: 'rgba(56,189,248,1)',   fill: 'rgba(56,189,248,0.18)',  bar: '#38bdf8' },
+  { line: 'rgba(129,140,248,1)',  fill: 'rgba(129,140,248,0.18)', bar: '#818cf8' },
+  { line: 'rgba(52,211,153,1)',   fill: 'rgba(52,211,153,0.18)',  bar: '#34d399' },
+];
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.07)';
+
+let radarChart = null, barChart = null;
+
+// ── Domain configuration ────────────────────────────────────────────────
+const DOMINIOS = {
+  bacteriana:  { prefix: '/api/bacterias', agentLabel: 'Bactéria',    drugLabel: 'Antibiótico',     agentKey: 'bacterias', radarAxes: 5 },
+  viral:       { prefix: '/api/virais',    agentLabel: 'Vírus',       drugLabel: 'Antiviral',       agentKey: 'virus',     radarAxes: 5 },
+  fungica:     { prefix: '/api/fungicos',  agentLabel: 'Fungo',       drugLabel: 'Antifúngico',     agentKey: 'fungos',    radarAxes: 5 },
+  parasitaria: { prefix: '/api/parasitos', agentLabel: 'Parasito',    drugLabel: 'Antiparasitário', agentKey: 'parasitos', radarAxes: 5 },
+  cronica:     { prefix: '/api/cronicas',  agentLabel: null,          drugLabel: 'Medicamento',     agentKey: null,        radarAxes: 3 },
+};
+let currentDomain = 'bacteriana';
+
+// ── API helper ─────────────────────────────────────────────────────────
+async function api(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Bootstrap: load initial domain ────────────────────────────────────
+(async () => {
+  await loadDomain('bacteriana');
+})();
+
+async function loadDomain(domain) {
+  const cfg = DOMINIOS[domain];
+  try {
+    const [cats, pats] = await Promise.all([
+      api(cfg.prefix + '/categorias'),
+      api(cfg.prefix + '/patologias'),
+    ]);
+    window._allPats = pats;
+
+    const selCat = document.getElementById('sel-categoria');
+    // Reset category dropdown
+    while (selCat.options.length > 1) selCat.remove(1);
+    cats.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.nome;
+      selCat.appendChild(o);
+    });
+
+    populatePatologias(pats);
+  } catch(e) {
+    document.getElementById('result').innerHTML =
+      `<div class="empty-state"><div class="icon">⚠️</div><p>Erro ao carregar domínio: ${e.message}</p></div>`;
+  }
+}
+
+function populatePatologias(pats) {
+  const sel = document.getElementById('sel-patologia');
+  // keep first option
+  while (sel.options.length > 1) sel.remove(1);
+  pats.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.nome + (p.cid10 ? ` (${p.cid10})` : '');
+    sel.appendChild(o);
+  });
+}
+
+// ── Domain tab switching ───────────────────────────────────────────────
+document.querySelectorAll('.domain-tab').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const domain = this.dataset.domain;
+    if (domain === currentDomain) return;
+
+    // Update active class
+    document.querySelectorAll('.domain-tab').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+
+    currentDomain = domain;
+
+    // Clear results and dropdowns
+    document.getElementById('result').innerHTML = `
+      <div class="empty-state">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>`;
+
+    // Reset pathology dropdown
+    const selPat = document.getElementById('sel-patologia');
+    while (selPat.options.length > 1) selPat.remove(1);
+
+    // Reset category dropdown
+    const selCat = document.getElementById('sel-categoria');
+    while (selCat.options.length > 1) selCat.remove(1);
+    selCat.value = '';
+
+    await loadDomain(domain);
+
+    document.getElementById('result').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">${domainIcon(domain)}</div>
+        <p>Selecione uma patologia para visualizar os ${DOMINIOS[domain].drugLabel.toLowerCase()}s mais eficazes.</p>
+      </div>`;
+  });
+});
+
+function domainIcon(domain) {
+  const icons = { bacteriana:'🦠', viral:'🧬', fungica:'🍄', parasitaria:'🪱', cronica:'❤️' };
+  return icons[domain] || '🔬';
+}
+
+// ── Category filter ────────────────────────────────────────────────────
+document.getElementById('sel-categoria').addEventListener('change', function() {
+  const catId = this.value ? parseInt(this.value) : null;
+  const cfg = DOMINIOS[currentDomain];
+
+  if (catId) {
+    api(`${cfg.prefix}/patologias?categoria_id=${catId}`).then(populatePatologias);
+  } else {
+    populatePatologias(window._allPats);
+  }
+  document.getElementById('result').innerHTML = `
+    <div class="empty-state"><div class="icon">${domainIcon(currentDomain)}</div>
+    <p>Selecione uma patologia para visualizar os ${DOMINIOS[currentDomain].drugLabel.toLowerCase()}s mais eficazes.</p></div>`;
+});
+
+// ── Pathology selection ────────────────────────────────────────────────
+document.getElementById('sel-patologia').addEventListener('change', async function() {
+  const id = this.value;
+  if (!id) return;
+  showLoading();
+  const cfg = DOMINIOS[currentDomain];
+  try {
+    const data = await api(`${cfg.prefix}/patologia/${id}`);
+    renderResult(data);
+  } catch(e) {
+    document.getElementById('result').innerHTML =
+      `<div class="empty-state"><div class="icon">⚠️</div><p>Erro ao carregar: ${e.message}</p></div>`;
+  }
+});
+
+function showLoading() {
+  document.getElementById('result').innerHTML = `
+    <div class="empty-state">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+    </div>`;
+}
+
+// ── Agent badge helper ─────────────────────────────────────────────────
+function agentBadges(agente, domain) {
+  switch(domain) {
+    case 'bacteriana': {
+      const gramClass = { positiva:'gram-pos', negativa:'gram-neg', indeterminada:'gram-ind', nao_aplicavel:'gram-ind' };
+      const gramLabel = { positiva:'Gram+', negativa:'Gram−', indeterminada:'Indet.', nao_aplicavel:'N/A' };
+      return `
+        ${agente.gram ? `<span class="tag">${gramLabel[agente.gram] || agente.gram}</span>` : ''}
+        ${agente.aerobiose ? `<span class="tag" style="font-size:.65rem">${agente.aerobiose}</span>` : ''}
+      `;
+    }
+    case 'viral': {
+      const acidCls = agente.tipo_acido_nucleico && agente.tipo_acido_nucleico.toUpperCase().includes('RNA') ? 'viral-rna' : 'viral-dna';
+      return `
+        ${agente.tipo_acido_nucleico ? `<span class="tag" style="font-size:.65rem">${agente.tipo_acido_nucleico}</span>` : ''}
+        ${agente.envelope !== undefined && agente.envelope !== null
+          ? `<span class="tag" style="font-size:.65rem">${agente.envelope ? 'Envelopado' : 'Não-envelopado'}</span>`
+          : ''}
+        ${agente.transmissao_principal ? `<span class="tag" style="font-size:.65rem;color:var(--muted)">${agente.transmissao_principal}</span>` : ''}
+      `;
+    }
+    case 'fungica': {
+      const tipoMap = {
+        levedura: 'fungal-lev',
+        filamentoso: 'fungal-fil',
+        dimorfico: 'fungal-dim',
+        dimórfico: 'fungal-dim',
+      };
+      const tipoCls = tipoMap[(agente.tipo||'').toLowerCase()] || '';
+      return `
+        ${agente.tipo ? `<span class="tag" style="font-size:.65rem">${agente.tipo}</span>` : ''}
+        ${agente.transmissao_principal ? `<span class="tag" style="font-size:.65rem;color:var(--muted)">${agente.transmissao_principal}</span>` : ''}
+      `;
+    }
+    case 'parasitaria': {
+      return `
+        ${agente.tipo ? `<span class="tag" style="font-size:.65rem">${agente.tipo}</span>` : ''}
+        ${agente.vetor ? `<span class="tag" style="font-size:.65rem;color:var(--muted)">Vetor: ${agente.vetor}</span>` : ''}
+        ${agente.ciclo_hospedeiro ? `<span class="tag" style="font-size:.65rem;color:var(--muted)">${agente.ciclo_hospedeiro}</span>` : ''}
+      `;
+    }
+    default:
+      return '';
+  }
+}
+
+function agentChipClass(agente, domain) {
+  if (domain === 'bacteriana') {
+    const gramClass = { positiva:'gram-pos', negativa:'gram-neg', indeterminada:'gram-ind', nao_aplicavel:'gram-ind' };
+    return gramClass[agente.gram] || '';
+  }
+  if (domain === 'viral') {
+    const t = (agente.tipo_acido_nucleico || '').toUpperCase();
+    return t.includes('RNA') ? 'viral-rna' : t.includes('DNA') ? 'viral-dna' : '';
+  }
+  if (domain === 'fungica') {
+    const tipoMap = { levedura:'fungal-lev', filamentoso:'fungal-fil', dimorfico:'fungal-dim', 'dimórfico':'fungal-dim' };
+    return tipoMap[(agente.tipo||'').toLowerCase()] || 'fungal-lev';
+  }
+  if (domain === 'parasitaria') return 'parasit-chip';
+  return '';
+}
+
+// ── Render result ─────────────────────────────────────────────────────
+function renderResult(data) {
+  const domain = currentDomain;
+  const cfg = DOMINIOS[domain];
+  const { patologia: p, top3_medicamentos: atbs, tratamento_padrao: trat } = data;
+  const agentes = data.agentes || data[cfg.agentKey] || [];
+
+  const prevLabel = {
+    muito_alta:'Muito Alta', alta:'Alta', media:'Média',
+    baixa:'Baixa', rara:'Rara'
+  };
+  const mortLabel = { alta:'Mortalidade Alta', media:'Mortalidade Média', baixa:'Mortalidade Baixa' };
+
+  const notifBadge = p.notificacao_compulsoria
+    ? `<span class="badge badge-notif">🔴 Notif. Compulsória ${p.tipo_notificacao === 'imediata' ? '· Imediata' : '· Semanal'}</span>`
+    : '';
+
+  // ── Agent chips ──────────────────────────────────────────────────
+  let agentesHtml = '';
+  if (agentes && agentes.length > 0) {
+    agentesHtml = `
+      <div class="section-title">Agente(s) Causador(es)</div>
+      <div class="bact-list">
+        ${agentes.map(b => `
+          <div class="bact-chip ${agentChipClass(b, domain)}">
+            <span class="sci">${b.nome_cientifico}</span>
+            ${b.nome_comum ? `<span style="color:var(--muted);font-size:.75rem">(${b.nome_comum})</span>` : ''}
+            ${agentBadges(b, domain)}
+            <span class="bact-role">${b.papel}</span>
+            ${b.frequencia_pct ? `<span style="color:var(--muted);font-size:.72rem">${b.frequencia_pct}% dos casos</span>` : ''}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  const popLabel = {
+    adulto:'Adulto', pediatrico:'Pediátrico', gestante:'Gestante',
+    idoso:'Idoso', insuf_renal:'Insuf. Renal', insuf_hepatica:'Insuf. Hepática'
+  };
+  const popCls = {
+    adulto:'', pediatrico:'ped', gestante:'gest',
+    idoso:'', insuf_renal:'ren', insuf_hepatica:'ren'
+  };
+  const gravIcon = {
+    contraindicada:'🚫', grave:'⛔', moderada:'⚠️', leve:'ℹ️'
+  };
+  const isChronic = domain === 'cronica';
+
+  function buildPosologyHtml(posologias) {
+    if (!posologias || !posologias.length)
+      return '<p class="no-data">Sem dados de posologia cadastrados.</p>';
+    const hasMeta = posologias.some(pos => pos.meta_terapeutica);
+    const rows = posologias.map(pos => {
+      const adj = (pos.ajuste_renal ? '🔴 Aj.Renal ' : '') + (pos.ajuste_hepatico ? '🟡 Aj.Hep.' : '');
+      const duracaoCell = pos.duracao_texto
+        ? pos.duracao_texto
+        : (pos.duracao_min_dias === pos.duracao_max_dias
+            ? (pos.duracao_min_dias != null ? pos.duracao_min_dias + 'd' : '—')
+            : (pos.duracao_min_dias||'?') + '–' + (pos.duracao_max_dias||'?') + 'd');
+      return `<tr>
+        <td><span class="pos-pop ${popCls[pos.populacao] || ''}">${popLabel[pos.populacao] || pos.populacao}</span></td>
+        <td><strong>${pos.dose_unitaria}</strong></td>
+        <td>${pos.frequencia}</td>
+        <td>${pos.via}</td>
+        <td>${duracaoCell}</td>
+        <td>${adj || '—'}</td>
+      </tr>
+      ${pos.observacoes ? `<tr><td colspan="6" class="pos-obs">💡 ${pos.observacoes}</td></tr>` : ''}
+      ${pos.meta_terapeutica ? `<tr class="meta-row"><td colspan="6">🎯 Meta: ${pos.meta_terapeutica}</td></tr>` : ''}`;
+    }).join('');
+    return `<table class="pos-table">
+      <thead><tr>
+        <th>População</th><th>Dose</th><th>Freq.</th>
+        <th>Via</th><th>Duração</th><th>Ajustes</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function buildInteracoesHtml(interacoes) {
+    if (!interacoes || !interacoes.length)
+      return '<p class="no-data">Sem interações relevantes cadastradas.</p>';
+    return `<div class="inter-list">${interacoes.map(it => `
+      <div class="inter-item ${it.gravidade}">
+        <div class="inter-header">
+          <span class="inter-drug">${gravIcon[it.gravidade] || ''} ${it.medicamento_interagente}</span>
+          <span class="inter-badge">${it.gravidade.toUpperCase()}</span>
+          ${it.classe_interagente ? `<span style="font-size:.68rem;opacity:.7">${it.classe_interagente}</span>` : ''}
+        </div>
+        <div class="inter-efeito">${it.efeito_clinico}</div>
+        <div class="inter-conduta"><strong>Conduta:</strong> ${it.conduta}</div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // ── Drug cards ───────────────────────────────────────────────────
+  const rankLabel = ['🥇 1º mais eficaz', '🥈 2º mais eficaz', '🥉 3º mais eficaz'];
+  let atbCardsHtml = '';
+
+  atbs.forEach((a, i) => {
+    const uid = `atb-${i}`;
+    const interCount = (a.interacoes || []).length;
+    const hasContraind = (a.interacoes || []).some(x => x.gravidade === 'contraindicada');
+    const hasGrave    = (a.interacoes || []).some(x => x.gravidade === 'grave');
+    const interBadge  = hasContraind ? '🚫' : hasGrave ? '⛔' : interCount ? '⚠️' : '';
+
+    // Efficacy bar / resistance alert — hidden for chronic domain
+    let barAndResistHtml = '';
+    if (!isChronic) {
+      const hasResist = (a.resistencia_br_pct || 0) >= 20;
+      const resistHtml = hasResist
+        ? `<div class="resist-alert">
+             <span class="icon">⚠️</span>
+             <div><strong>Resistência no Brasil: ${a.resistencia_br_pct}%</strong><br>
+             Risco elevado de falha terapêutica. Verificar antibiograma local.</div>
+           </div>`
+        : (a.resistencia_br_pct !== null && a.resistencia_br_pct !== undefined
+            ? `<div class="resist-ok">✅ Resistência BR: ${a.resistencia_br_pct ?? 0}% — baixo risco</div>`
+            : '');
+
+      barAndResistHtml = `
+        <div class="eficacia-bar">
+          <div class="lbl"><span>Eficácia</span><strong>${a.eficacia_pct}%</strong></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${a.eficacia_pct}%"></div></div>
+        </div>
+        ${resistHtml}`;
+    } else {
+      // Chronic: show evidence badge instead
+      barAndResistHtml = a.nivel_evidencia
+        ? `<div><span class="ev-badge-chronic">Evidência ${a.nivel_evidencia}</span></div>`
+        : '';
+    }
+
+    atbCardsHtml += `
+      <div class="atb-card rank-${i+1}">
+        <div class="atb-rank">${rankLabel[i]}</div>
+        <div class="atb-name">${a.nome_generico}</div>
+        ${a.nome_comercial ? `<div class="atb-com">${a.nome_comercial}</div>` : '<div class="atb-com" style="color:transparent">—</div>'}
+        <div class="atb-meta">
+          <span class="tag tag-linha">Linha ${a.linha_tratamento}ª</span>
+          ${!isChronic ? `<span class="tag tag-ev">Evidência ${a.nivel_evidencia}</span>` : ''}
+          <span class="tag">${a.via}</span>
+          <span class="tag">${a.classe}</span>
+          ${a.disponivel_sus ? '<span class="tag tag-sus">SUS ✓</span>' : '<span class="tag">Sem SUS</span>'}
+        </div>
+        ${barAndResistHtml}
+        ${a.consideracoes ? `<div class="obs-text">${a.consideracoes}</div>` : ''}
+
+        <!-- Tabs: posologia / interações -->
+        <div class="atb-tabs">
+          <button class="atb-tab-btn active" onclick="switchTab('${uid}','pos',this)">💊 Posologia</button>
+          <button class="atb-tab-btn" onclick="switchTab('${uid}','inter',this)">
+            ${interBadge} Interações ${interCount ? `(${interCount})` : ''}
+          </button>
+        </div>
+        <div id="${uid}-pos"   class="atb-tab-panel active">${buildPosologyHtml(a.posologias)}</div>
+        <div id="${uid}-inter" class="atb-tab-panel">${buildInteracoesHtml(a.interacoes)}</div>
+      </div>`;
+  });
+
+  if (!atbs || !atbs.length) {
+    atbCardsHtml = `<p style="color:var(--muted);font-size:.85rem;grid-column:1/-1">
+      Sem dados de eficácia de ${cfg.drugLabel.toLowerCase()}s cadastrados para esta patologia.</p>`;
+  }
+
+  // ── Tratamento padrão-ouro ─────────────────────────────────────
+  let tratHtml = '';
+  if (trat) {
+    const grauDesc = { A:'Recomendação Forte', B:'Recomendação Moderada', C:'Recomendação Fraca', D:'Consenso de Especialistas' };
+    const nivDesc  = { I:'Evidência I (ECR)', II:'Evidência II (Observacional)', III:'Evidência III (Consenso)' };
+
+    // Resolve primary drug field across domains
+    const primaryDrug = trat.antibiotico_principal || trat.antiviral_principal ||
+                        trat.antifungico_principal || trat.antiparasitario_principal ||
+                        trat.medicamento_principal || '—';
+
+    tratHtml = `
+      <div class="section-title">Tratamento Padrão-Ouro</div>
+      <div class="trat-card">
+        <div class="trat-header">
+          <div>
+            <div class="trat-atb-principal">${primaryDrug}</div>
+            ${trat.combinacao ? `<div class="trat-combinacao">${trat.combinacao}</div>` : ''}
+          </div>
+          <div class="trat-badges">
+            ${trat.grau_recomendacao ? `<span class="badge-grau">Grau ${trat.grau_recomendacao} — ${grauDesc[trat.grau_recomendacao]||''}</span>` : ''}
+            ${trat.nivel_evidencia ? `<span class="badge-ev">${nivDesc[trat.nivel_evidencia]||trat.nivel_evidencia}</span>` : ''}
+          </div>
+        </div>
+        <div class="trat-regime">${trat.regime_resumido||''}</div>
+        ${trat.duracao_resumida ? `<div class="trat-duracao">⏱ Duração: ${trat.duracao_resumida}</div>` : ''}
+        <div class="trat-grid">
+          ${trat.alternativa_alergia ? `<div class="trat-section"><div class="trat-section-title">Alternativa por Alergia</div><div class="trat-section-body">${trat.alternativa_alergia}</div></div>` : ''}
+          ${trat.alternativa_resistencia ? `<div class="trat-section"><div class="trat-section-title">Alternativa por Resistência</div><div class="trat-section-body">${trat.alternativa_resistencia}</div></div>` : ''}
+        </div>
+        ${trat.justificativa ? `<div class="trat-justif"><strong>Justificativa:</strong> ${trat.justificativa}</div>` : ''}
+        ${trat.obs_especiais ? `<div class="trat-obs">⚠️ ${trat.obs_especiais}</div>` : ''}
+        <div class="trat-fonte">
+          <span>Fonte:</span>
+          ${trat.fonte_sigla ? `<span class="source-chip">${trat.fonte_sigla}</span>` : ''}
+          ${trat.fonte_nome ? `<span>${trat.fonte_nome}</span>` : ''}
+          ${trat.ano_diretriz ? `<span>· ${trat.ano_diretriz}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  // ── Charts section ─────────────────────────────────────────────
+  const hasCharts = atbs && atbs.length > 0 && (!isChronic || atbs[0].radar);
+  const radarNote = isChronic
+    ? ''
+    : `<p style="font-size:.68rem;color:var(--muted);margin-top:.75rem">
+        ¹Segurança = 100 − resistência no Brasil &nbsp;
+        ²Evidência A=100, B=75, C=50, D=25 &nbsp;
+        ³1ª linha=100, 2ª=60, 3ª=30
+      </p>`;
+
+  const barChartHtml = !isChronic
+    ? `<div class="chart-card">
+        <h3>📊 Eficácia (%) por ${cfg.drugLabel}</h3>
+        <canvas id="bar-chart" height="320"></canvas>
+       </div>`
+    : '';
+
+  const chartsHtml = hasCharts
+    ? `<div class="charts-grid">
+        <div class="chart-card">
+          <h3>📡 Comparativo por Eixos (Radar)</h3>
+          <canvas id="radar-chart" height="320"></canvas>
+          ${radarNote}
+        </div>
+        ${barChartHtml}
+      </div>`
+    : '';
+
+  // Sources
+  const fontes = [...new Set((atbs||[]).map(a => a.fonte).filter(Boolean))];
+  const fontesHtml = fontes.map(f => `<span class="source-chip">${f}</span>`).join('');
+
+  const html = `
+    <div id="result-inner">
+      <!-- Pathology card -->
+      <div class="pat-card">
+        <div>
+          <h2>${p.nome}</h2>
+          <p class="desc">${p.descricao || ''}</p>
+          <div class="badges">
+            ${p.cid10 ? `<span class="badge badge-cid">CID-10: ${p.cid10}</span>` : ''}
+            <span class="badge badge-cat">${p.categoria}</span>
+            ${p.prevalencia_br ? `<span class="badge badge-prev">Prevalência: ${prevLabel[p.prevalencia_br] || p.prevalencia_br}</span>` : ''}
+            ${p.mortalidade_br ? `<span class="badge badge-mort">${mortLabel[p.mortalidade_br] || p.mortalidade_br}</span>` : ''}
+            ${notifBadge}
+          </div>
+          ${p.populacao_risco ? `<p style="font-size:.78rem;color:var(--muted);margin-top:.6rem">👥 ${p.populacao_risco}</p>` : ''}
+        </div>
+      </div>
+
+      <!-- Agents (hidden for chronic) -->
+      ${agentesHtml}
+
+      <!-- Charts -->
+      ${chartsHtml}
+
+      <!-- Drug cards -->
+      <div class="section-title">Top 3 ${cfg.drugLabel}s Mais Eficazes</div>
+      <div class="atb-cards">${atbCardsHtml}</div>
+
+      <!-- Tratamento padrão-ouro -->
+      ${tratHtml}
+
+      <!-- Source footnote -->
+      <div class="source-bar">
+        <span>Fontes oficiais:</span> ${fontesHtml}
+        <span style="color:var(--muted);margin-left:auto">MS = Ministério da Saúde · ANVISA · SBI = Soc. Bras. Infectologia</span>
+      </div>
+    </div>`;
+
+  document.getElementById('result').innerHTML = html;
+
+  if (atbs && atbs.length) {
+    buildRadar(atbs, domain);
+    if (!isChronic) buildBar(atbs);
+  }
+}
+
+// ── Chart builders ────────────────────────────────────────────────────
+function buildRadar(atbs, domain) {
+  const ctx = document.getElementById('radar-chart');
+  if (!ctx) return;
+  if (radarChart) radarChart.destroy();
+
+  const cfg = DOMINIOS[domain];
+  let radarLabels, radarData;
+
+  if (cfg.radarAxes === 3) {
+    radarLabels = ['Evidência', 'Recomendação', 'Acesso SUS'];
+    radarData = atbs.map(a => [
+      a.radar.evidencia,
+      a.radar.recomendacao,
+      a.radar.acesso_sus,
+    ]);
+  } else {
+    radarLabels = ['Eficácia (%)', 'Segurança¹', 'Evidência²', '1ª Linha³', 'Acesso SUS'];
+    radarData = atbs.map(a => [
+      a.radar.eficacia,
+      a.radar.seguranca,
+      a.radar.evidencia,
+      a.radar.primeira_linha,
+      a.radar.acesso_sus,
+    ]);
+  }
+
+  radarChart = new Chart(ctx.getContext('2d'), {
+    type: 'radar',
+    data: {
+      labels: radarLabels,
+      datasets: atbs.map((a, i) => ({
+        label: a.nome_generico,
+        data: radarData[i],
+        borderColor: COLORS[i].line,
+        backgroundColor: COLORS[i].fill,
+        borderWidth: 2.5,
+        pointBackgroundColor: COLORS[i].line,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      })),
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 700, easing: 'easeInOutQuart' },
+      scales: {
+        r: {
+          min: 0, max: 100,
+          ticks: {
+            stepSize: 20,
+            backdropColor: 'transparent',
+            color: '#475569',
+            font: { size: 10 },
+          },
+          grid:       { color: 'rgba(255,255,255,0.07)' },
+          angleLines: { color: 'rgba(255,255,255,0.07)' },
+          pointLabels: { color: '#94a3b8', font: { size: 11, weight: '600' } },
+        },
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#94a3b8', padding: 16, boxWidth: 12 },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,0.95)',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          padding: 12,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.r}`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function buildBar(atbs) {
+  const ctx = document.getElementById('bar-chart');
+  if (!ctx) return;
+  if (barChart) barChart.destroy();
+
+  barChart = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: atbs.map(a => a.nome_generico),
+      datasets: [
+        {
+          label: 'Eficácia (%)',
+          data: atbs.map(a => a.eficacia_pct),
+          backgroundColor: atbs.map((_, i) => COLORS[i].fill),
+          borderColor:     atbs.map((_, i) => COLORS[i].line),
+          borderWidth: 2,
+          borderRadius: 8,
+        },
+        {
+          label: 'Resistência no BR (%)',
+          data: atbs.map(a => a.resistencia_br_pct ?? 0),
+          backgroundColor: 'rgba(239,68,68,0.18)',
+          borderColor:     'rgba(239,68,68,0.7)',
+          borderWidth: 2,
+          borderRadius: 8,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 700, easing: 'easeInOutQuart' },
+      indexAxis: 'y',
+      scales: {
+        x: {
+          min: 0, max: 100,
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#64748b', callback: v => v + '%' },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#94a3b8', font: { weight: '600' } },
+        },
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#94a3b8', padding: 16, boxWidth: 12 },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,0.95)',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          padding: 12,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x}%` },
+        },
+      },
+    },
+  });
+}
+
+// ── Tab switcher ──────────────────────────────────────────────────
+function switchTab(uid, tab, btn) {
+  ['pos','inter'].forEach(t => {
+    const panel = document.getElementById(`${uid}-${t}`);
+    if (panel) panel.classList.toggle('active', t === tab);
+  });
+  const tabs = btn.closest('.atb-tabs').querySelectorAll('.atb-tab-btn');
+  tabs.forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

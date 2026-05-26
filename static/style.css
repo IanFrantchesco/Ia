@@ -101,6 +101,13 @@ h1 {
   color: var(--text-secondary);
   white-space: nowrap;
 }
+.pill-link {
+  text-decoration: none;
+  color: var(--accent);
+  border-color: var(--accent);
+  transition: background .15s;
+}
+.pill-link:hover { background: rgba(56,189,248,.1); }
 
 /* ── Main layout ───────────────────────────────── */
 main {

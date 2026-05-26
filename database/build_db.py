@@ -37,6 +37,23 @@ from data_fungicos_eficacia import EFICACIA_FUNGICA
 from data_fungicos_posologia import POSOLOGIA_FUNGICA
 from data_fungicos_interacoes import INTERACOES_FUNGICAS
 from data_fungicos_tratamento import TRATAMENTO_PADRAO_OURO_FUNGICO
+from data_parasitos_agentes import (
+    FONTES_PARASITARIAS, FAMILIAS_PARASITARIAS, PARASITOS,
+    CLASSES_ANTIPARASITARIOS, ANTIPARASITARIOS,
+)
+from data_parasitos_patologias import CATEGORIAS_PARASITOSES, PATOLOGIAS_PARASITOSES
+from data_parasitos_eficacia import EFICACIA_PARASITARIA
+from data_parasitos_posologia import POSOLOGIA_PARASITARIA
+from data_parasitos_interacoes import INTERACOES_ANTIPARASITARIOS
+from data_parasitos_tratamento import TRATAMENTO_PADRAO_OURO_PARASITARIO
+from data_cronicas_fontes_medicamentos import (
+    FONTES_CRONICAS, CLASSES_MEDICAMENTOS, MEDICAMENTOS,
+)
+from data_cronicas_patologias import CATEGORIAS_CRONICAS, PATOLOGIAS_CRONICAS
+from data_cronicas_tratamento import TRATAMENTO_PADRAO_OURO_CRONICO
+from data_cronicas_posologia_interacoes import (
+    POSOLOGIA_CRONICA, INTERACOES_MEDICAMENTOS_CRONICOS,
+)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -130,9 +147,12 @@ def insert_patologias(conn):
 
 
 def _get_patologia_id_by_substr(conn, substr):
-    """Busca patologia por substring do nome (case-insensitive)."""
+    """Busca patologia por substring do nome. Tenta match exato antes de LIKE."""
     if substr is None:
         return None
+    row = conn.execute("SELECT id FROM patologias WHERE nome = ?", (substr,)).fetchone()
+    if row:
+        return row[0]
     row = conn.execute(
         "SELECT id FROM patologias WHERE nome LIKE ?", (f"%{substr}%",)
     ).fetchone()
@@ -860,6 +880,441 @@ def insert_tratamento_padrao_ouro(conn):
     return inserted, skipped
 
 
+def insert_fontes_parasitarias(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO fontes_oficiais (sigla,nome,orgao,tipo,url,ano,descricao) VALUES (?,?,?,?,?,?,?)",
+        FONTES_PARASITARIAS,
+    )
+
+
+def insert_familias_parasitarias(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO familias_parasitarias (nome,filo) VALUES (?,?)",
+        [(r[0], r[1]) for r in FAMILIAS_PARASITARIAS],
+    )
+
+
+def insert_parasitos(conn):
+    for row in PARASITOS:
+        (nome_cient, nome_com, familia_nome, tipo,
+         ciclo, habitat, dist_br) = row[:7]
+        reservatorio = row[7] if len(row) > 7 else None
+        vetor = row[8] if len(row) > 8 else None
+        try:
+            familia_id = get_id(conn, "familias_parasitarias", "nome", familia_nome)
+        except ValueError:
+            familia_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO parasitos
+               (nome_cientifico,nome_comum,familia_id,tipo,ciclo_hospedeiro,
+                habitat_principal,distribuicao_br,reservatorio,vetor)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (nome_cient, nome_com, familia_id, tipo, ciclo, habitat, dist_br, reservatorio, vetor),
+        )
+
+
+def insert_classes_antiparasitarios(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO classes_antiparasitarios (nome,mecanismo_acao,alvo_celular) VALUES (?,?,?)",
+        CLASSES_ANTIPARASITARIOS,
+    )
+
+
+def insert_antiparasitarios(conn):
+    for row in ANTIPARASITARIOS:
+        nome_gen, nome_com, classe_nome, via, sus, anvisa, obs = row
+        classe_id = get_id(conn, "classes_antiparasitarios", "nome", classe_nome)
+        conn.execute(
+            """INSERT OR IGNORE INTO antiparasitarios
+               (nome_generico,nome_comercial,classe_id,via_administracao,disponivel_sus,anvisa_registrado,observacoes)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_gen, nome_com, classe_id, via, int(sus), int(anvisa), obs),
+        )
+
+
+def insert_categorias_parasitoses(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO categorias_patologias (nome,sistema) VALUES (?,?)",
+        CATEGORIAS_PARASITOSES,
+    )
+
+
+def _num_to_prevalencia(v):
+    if isinstance(v, str):
+        return v
+    if v >= 50000:
+        return "muito_alta"
+    if v >= 5000:
+        return "alta"
+    if v >= 500:
+        return "media"
+    if v >= 50:
+        return "baixa"
+    return "rara"
+
+
+def _num_to_mortalidade(v):
+    if isinstance(v, str):
+        return v
+    if v >= 1.0:
+        return "alta"
+    if v >= 0.1:
+        return "media"
+    return "baixa"
+
+
+def insert_patologias_parasitoses(conn):
+    for row in PATOLOGIAS_PARASITOSES:
+        (nome, cid10, cat_nome, desc, notif, tipo_notif,
+         prev, mort, pop_risco, fonte_sigla) = row
+        cat_id = get_id(conn, "categorias_patologias", "nome", cat_nome)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO patologias
+               (nome,cid10,categoria_id,descricao,notificacao_compulsoria,tipo_notificacao,
+                prevalencia_br,mortalidade_br,populacao_risco,fonte_epidemio_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nome, cid10, cat_id, desc, int(bool(notif)), tipo_notif,
+             _num_to_prevalencia(prev), _num_to_mortalidade(mort), pop_risco, fonte_id),
+        )
+
+
+def insert_eficacia_parasitaria(conn):
+    inserted = skipped = 0
+    for parasito_nome, registros in EFICACIA_PARASITARIA.items():
+        try:
+            parasito_id = get_id(conn, "parasitos", "nome_cientifico", parasito_nome)
+        except ValueError:
+            print(f"  [AVISO] Parasito não encontrado: {parasito_nome!r}")
+            skipped += len(registros)
+            continue
+        for rec in registros:
+            (atp_nome, pat_substr, efic, linha, evidencia,
+             resist, fonte_sigla, ano, obs) = rec
+            if atp_nome is None:
+                skipped += 1
+                continue
+            try:
+                atp_id = get_id(conn, "antiparasitarios", "nome_generico", atp_nome)
+            except ValueError:
+                print(f"  [AVISO] Antiparasitário não encontrado: {atp_nome!r}")
+                skipped += 1
+                continue
+            try:
+                fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+            except ValueError:
+                fonte_id = None
+            pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+            conn.execute(
+                """INSERT OR IGNORE INTO eficacia_antiparasitario
+                   (parasito_id,antiparasitario_id,patologia_id,eficacia_pct,linha_tratamento,
+                    nivel_evidencia,resistencia_br_pct,fonte_id,ano_dado,consideracoes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (parasito_id, atp_id, pat_id, efic, linha, evidencia, resist, fonte_id, ano, obs),
+            )
+            if pat_id:
+                conn.execute(
+                    """INSERT OR IGNORE INTO patologia_parasito (patologia_id, parasito_id, papel)
+                       VALUES (?, ?, 'principal')""",
+                    (pat_id, parasito_id),
+                )
+            inserted += 1
+    return inserted, skipped
+
+
+def insert_posologia_parasitaria(conn):
+    inserted = skipped = 0
+    for rec in POSOLOGIA_PARASITARIA:
+        (atp_nome, pat_substr, pop, dose, freq, via,
+         dur_min, dur_max, dur_txt, aj_renal, aj_hep, obs, fonte_sigla) = rec
+        try:
+            atp_id = get_id(conn, "antiparasitarios", "nome_generico", atp_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO posologia_parasitaria
+               (antiparasitario_id,patologia_id,populacao,dose_unitaria,frequencia,via,
+                duracao_min_dias,duracao_max_dias,duracao_texto,
+                ajuste_renal,ajuste_hepatico,observacoes,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (atp_id, pat_id, pop, dose, freq, via,
+             dur_min, dur_max, dur_txt, int(aj_renal), int(aj_hep), obs, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_interacoes_parasitarias(conn):
+    inserted = skipped = 0
+    for rec in INTERACOES_ANTIPARASITARIOS:
+        (atp_nome, med_inter, classe_inter,
+         mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
+        try:
+            atp_id = get_id(conn, "antiparasitarios", "nome_generico", atp_nome)
+        except ValueError:
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO interacoes_antiparasitarios
+               (antiparasitario_id,medicamento_interagente,classe_interagente,
+                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (atp_id, med_inter, classe_inter,
+             mecanismo, gravidade, efeito, conduta, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_tratamento_padrao_ouro_parasitario(conn):
+    inserted = skipped = 0
+    for rec in TRATAMENTO_PADRAO_OURO_PARASITARIO:
+        (pat_substr, atp_principal, combinacao, regime, duracao,
+         justificativa, alt_alergia, alt_resistencia, obs,
+         grau_rec, nivel_ev, fonte_sigla, ano_diretriz) = rec
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            print(f"  [AVISO] Patologia parasitária não encontrada: {pat_substr!r}")
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO tratamento_padrao_ouro_parasitario
+               (patologia_id, antiparasitario_principal, combinacao, regime_resumido,
+                duracao_resumida, justificativa, alternativa_alergia,
+                alternativa_resistencia, obs_especiais, grau_recomendacao,
+                nivel_evidencia, fonte_id, ano_diretriz)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pat_id, atp_principal, combinacao, regime, duracao,
+             justificativa, alt_alergia, alt_resistencia, obs,
+             grau_rec, nivel_ev, fonte_id, ano_diretriz),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_patologia_parasito_links(conn):
+    extras = [
+        # Malária
+        ("Plasmodium falciparum",          "Malária por Plasmodium falciparum", "principal", 100.0),
+        ("Plasmodium vivax",               "Malária por Plasmodium vivax",      "principal", 100.0),
+        ("Plasmodium malariae",            "Malária por Plasmodium malariae",   "principal", 100.0),
+        # Leishmanioses
+        ("Leishmania braziliensis",        "Leishmaniose Tegumentar",           "principal", 70.0),
+        ("Leishmania amazonensis",         "Leishmaniose Tegumentar",           "principal", 15.0),
+        ("Leishmania infantum (chagasi)",  "Leishmaniose Visceral",             "principal", 100.0),
+        # Chagas
+        ("Trypanosoma cruzi",              "Doença de Chagas Aguda",            "principal", 100.0),
+        ("Trypanosoma cruzi",              "Doença de Chagas Crônica",          "principal", 100.0),
+        # Toxoplasmose
+        ("Toxoplasma gondii",              "Toxoplasmose em Imunocompetentes",  "principal", 100.0),
+        ("Toxoplasma gondii",              "Toxoplasmose em Imunocomprometidos","principal", 100.0),
+        ("Toxoplasma gondii",              "Toxoplasmose Congênita",            "principal", 100.0),
+        # Protozooses intestinais
+        ("Entamoeba histolytica",          "Amebíase Intestinal",               "principal", 100.0),
+        ("Entamoeba histolytica",          "Abscesso Hepático Amebiano",        "principal", 100.0),
+        ("Giardia lamblia (intestinalis/duodenalis)", "Giardíase",              "principal", 100.0),
+        ("Trichomonas vaginalis",          "Tricomoníase",                      "principal", 100.0),
+        ("Cryptosporidium parvum",         "Criptosporidiose",                  "principal", 100.0),
+        # Helmintoses intestinais
+        ("Ascaris lumbricoides",           "Ascaridíase",                       "principal", 100.0),
+        ("Necator americanus",             "Ancilostomíase",                    "principal", 70.0),
+        ("Ancylostoma duodenale",          "Ancilostomíase",                    "secundario", 30.0),
+        ("Trichuris trichiura",            "Tricuríase",                        "principal", 100.0),
+        ("Strongyloides stercoralis",      "Estrongiloidíase",                  "principal", 100.0),
+        ("Strongyloides stercoralis",      "Hiperinfecção",                     "principal", 100.0),
+        ("Enterobius vermicularis",        "Enterobíase",                       "principal", 100.0),
+        ("Taenia solium",                  "Teníase",                           "principal", 50.0),
+        ("Taenia saginata",                "Teníase",                           "principal", 50.0),
+        ("Taenia solium",                  "Neurocisticercose",                 "principal", 100.0),
+        # Helmintoses teciduais
+        ("Schistosoma mansoni",            "Esquistossomose Mansoni",           "principal", 100.0),
+        ("Wuchereria bancrofti",           "Filariose Linfática",               "principal", 100.0),
+        ("Toxocara canis",                 "Toxocaríase",                       "principal", 100.0),
+        ("Ancylostoma braziliense",        "Larva Migrans Cutânea",             "principal", 100.0),
+        ("Echinococcus granulosus",        "Hidatidose",                        "principal", 100.0),
+        ("Onchocerca volvulus",            "Oncocercose",                       "principal", 100.0),
+        # Hepatobiliares
+        ("Fasciola hepatica",              "Fasciolíase",                       "principal", 100.0),
+        # Ectoparasitoses
+        ("Pediculus humanus capitis",      "Pediculose do Couro Cabeludo",      "principal", 100.0),
+        ("Sarcoptes scabiei",              "Escabiose",                         "principal", 100.0),
+        ("Cochliomyia hominivorax",        "Miiase",                            "principal", 100.0),
+    ]
+    for parasito_nome, pat_substr, papel, freq in extras:
+        try:
+            parasito_id = get_id(conn, "parasitos", "nome_cientifico", parasito_nome)
+        except ValueError:
+            continue
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO patologia_parasito
+               (patologia_id, parasito_id, papel, frequencia_pct)
+               VALUES (?,?,?,?)""",
+            (pat_id, parasito_id, papel, freq),
+        )
+
+
+def insert_fontes_cronicas(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO fontes_oficiais (sigla,nome,orgao,tipo,url,ano,descricao) VALUES (?,?,?,?,?,?,?)",
+        FONTES_CRONICAS,
+    )
+
+
+def insert_classes_medicamentos(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO classes_medicamentos (nome,mecanismo_acao,alvo_terapeutico,area_terapeutica) VALUES (?,?,?,?)",
+        CLASSES_MEDICAMENTOS,
+    )
+
+
+def insert_medicamentos(conn):
+    for row in MEDICAMENTOS:
+        nome_gen, nome_com, classe_nome, via, sus, anvisa, obs = row
+        row_id = conn.execute(
+            "SELECT id FROM classes_medicamentos WHERE nome=?", (classe_nome,)
+        ).fetchone()
+        classe_id = row_id[0] if row_id else None
+        conn.execute(
+            """INSERT OR IGNORE INTO medicamentos
+               (nome_generico,nome_comercial,classe_id,via_administracao,disponivel_sus,anvisa_registrado,observacoes)
+               VALUES (?,?,?,?,?,?,?)""",
+            (nome_gen, nome_com, classe_id, via, int(sus), int(anvisa), obs),
+        )
+
+
+def insert_categorias_cronicas(conn):
+    conn.executemany(
+        "INSERT OR IGNORE INTO categorias_patologias (nome,sistema) VALUES (?,?)",
+        CATEGORIAS_CRONICAS,
+    )
+
+
+def insert_patologias_cronicas(conn):
+    for row in PATOLOGIAS_CRONICAS:
+        (nome, cid10, cat_nome, desc, notif, tipo_notif,
+         prev, mort, pop_risco, fonte_sigla) = row
+        cat_id = get_id(conn, "categorias_patologias", "nome", cat_nome)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO patologias
+               (nome,cid10,categoria_id,descricao,notificacao_compulsoria,tipo_notificacao,
+                prevalencia_br,mortalidade_br,populacao_risco,fonte_epidemio_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (nome, cid10, cat_id, desc, int(bool(notif)), tipo_notif,
+             prev, mort, pop_risco, fonte_id),
+        )
+
+
+def insert_tratamento_padrao_ouro_cronico(conn):
+    inserted = skipped = 0
+    for rec in TRATAMENTO_PADRAO_OURO_CRONICO:
+        (pat_substr, med_principal, combinacao, regime, duracao,
+         justificativa, alt_alergia, alt_resistencia, obs,
+         grau_rec, nivel_ev, fonte_sigla, ano_diretriz) = rec
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        if pat_id is None:
+            print(f"  [AVISO] Patologia crônica não encontrada: {pat_substr!r}")
+            skipped += 1
+            continue
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT OR IGNORE INTO tratamento_padrao_ouro_cronico
+               (patologia_id, medicamento_principal, combinacao, regime_resumido,
+                duracao_resumida, justificativa, alternativa_alergia,
+                alternativa_resistencia, obs_especiais, grau_recomendacao,
+                nivel_evidencia, fonte_id, ano_diretriz)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (pat_id, med_principal, combinacao, regime, duracao,
+             justificativa, alt_alergia, alt_resistencia, obs,
+             grau_rec, nivel_ev, fonte_id, ano_diretriz),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_posologia_cronica(conn):
+    inserted = skipped = 0
+    for rec in POSOLOGIA_CRONICA:
+        (med_nome, pat_substr, pop, dose, freq, via,
+         dur_txt, aj_renal, aj_hep, meta, obs, fonte_sigla) = rec
+        row_id = conn.execute(
+            "SELECT id FROM medicamentos WHERE nome_generico=?", (med_nome,)
+        ).fetchone()
+        if row_id is None:
+            skipped += 1
+            continue
+        med_id = row_id[0]
+        pat_id = _get_patologia_id_by_substr(conn, pat_substr)
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO posologia_cronica
+               (medicamento_id,patologia_id,populacao,dose_unitaria,frequencia,via,
+                duracao_texto,ajuste_renal,ajuste_hepatico,meta_terapeutica,observacoes,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (med_id, pat_id, pop, dose, freq, via,
+             dur_txt, int(bool(aj_renal)), int(bool(aj_hep)), meta, obs, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
+def insert_interacoes_medicamentos_cronicos(conn):
+    inserted = skipped = 0
+    for rec in INTERACOES_MEDICAMENTOS_CRONICOS:
+        (med_nome, med_inter, classe_inter,
+         mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
+        row_id = conn.execute(
+            "SELECT id FROM medicamentos WHERE nome_generico=?", (med_nome,)
+        ).fetchone()
+        if row_id is None:
+            skipped += 1
+            continue
+        med_id = row_id[0]
+        try:
+            fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
+        except ValueError:
+            fonte_id = None
+        conn.execute(
+            """INSERT INTO interacoes_medicamentos
+               (medicamento_id,medicamento_interagente,classe_interagente,
+                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (med_id, med_inter, classe_inter,
+             mecanismo, gravidade, efeito, conduta, fonte_id),
+        )
+        inserted += 1
+    return inserted, skipped
+
+
 def print_summary(conn):
     tables = [
         "fontes_oficiais", "familias_bacterianas", "bacterias",
@@ -876,6 +1331,14 @@ def print_summary(conn):
         "patologia_fungo", "eficacia_antifungico",
         "posologia_fungica", "interacoes_antifungicos",
         "tratamento_padrao_ouro_fungico",
+        "familias_parasitarias", "parasitos",
+        "classes_antiparasitarios", "antiparasitarios",
+        "patologia_parasito", "eficacia_antiparasitario",
+        "posologia_parasitaria", "interacoes_antiparasitarios",
+        "tratamento_padrao_ouro_parasitario",
+        "classes_medicamentos", "medicamentos",
+        "tratamento_padrao_ouro_cronico",
+        "posologia_cronica", "interacoes_medicamentos",
     ]
     print("\n── Resumo do banco de dados ──────────────────────")
     for t in tables:
@@ -1048,6 +1511,93 @@ def build():
     inserted, skipped = insert_tratamento_padrao_ouro_fungico(conn)
     conn.commit()
     print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo fontes parasitárias...")
+    insert_fontes_parasitarias(conn)
+    conn.commit()
+
+    print("Inserindo famílias parasitárias...")
+    insert_familias_parasitarias(conn)
+    conn.commit()
+
+    print("Inserindo parasitos...")
+    insert_parasitos(conn)
+    conn.commit()
+
+    print("Inserindo classes de antiparasitários...")
+    insert_classes_antiparasitarios(conn)
+    conn.commit()
+
+    print("Inserindo antiparasitários...")
+    insert_antiparasitarios(conn)
+    conn.commit()
+
+    print("Inserindo categorias de parasitoses...")
+    insert_categorias_parasitoses(conn)
+    conn.commit()
+
+    print("Inserindo patologias parasitárias...")
+    insert_patologias_parasitoses(conn)
+    conn.commit()
+
+    print("Criando vínculos patologia ↔ parasito...")
+    insert_patologia_parasito_links(conn)
+    conn.commit()
+
+    print("Inserindo eficácia de antiparasitários...")
+    inserted, skipped = insert_eficacia_parasitaria(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo posologia parasitária...")
+    inserted, skipped = insert_posologia_parasitaria(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo interações antiparasitários...")
+    inserted, skipped = insert_interacoes_parasitarias(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridas, {skipped} ignoradas")
+
+    print("Inserindo tratamento padrão-ouro parasitário...")
+    inserted, skipped = insert_tratamento_padrao_ouro_parasitario(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo fontes de doenças crônicas...")
+    insert_fontes_cronicas(conn)
+    conn.commit()
+
+    print("Inserindo classes de medicamentos crônicos...")
+    insert_classes_medicamentos(conn)
+    conn.commit()
+
+    print("Inserindo medicamentos crônicos...")
+    insert_medicamentos(conn)
+    conn.commit()
+
+    print("Inserindo categorias de doenças crônicas...")
+    insert_categorias_cronicas(conn)
+    conn.commit()
+
+    print("Inserindo patologias crônicas/não-infecciosas...")
+    insert_patologias_cronicas(conn)
+    conn.commit()
+
+    print("Inserindo tratamento padrão-ouro crônico...")
+    inserted, skipped = insert_tratamento_padrao_ouro_cronico(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo posologia crônica...")
+    inserted, skipped = insert_posologia_cronica(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridos, {skipped} ignorados")
+
+    print("Inserindo interações de medicamentos crônicos...")
+    inserted, skipped = insert_interacoes_medicamentos_cronicos(conn)
+    conn.commit()
+    print(f"  → {inserted} inseridas, {skipped} ignoradas")
 
     print_summary(conn)
     conn.close()

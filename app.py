@@ -257,11 +257,12 @@ def bact_patologias(categoria_id: int = None):
     key = f"patologias:{categoria_id}"
     if key not in _cache:
         sql = """
-            SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
                    p.notificacao_compulsoria, p.tipo_notificacao,
                    c.nome AS categoria
             FROM patologias p
             JOIN categorias_patologias c ON c.id = p.categoria_id
+            JOIN patologia_bacteria pb ON pb.patologia_id = p.id
         """
         params = []
         if categoria_id:
@@ -899,11 +900,12 @@ def parasitos_patologias(categoria_id: int = None):
     key = f"parasitos:patologias:{categoria_id}"
     if key not in _cache:
         sql = """
-            SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
                    p.notificacao_compulsoria, p.tipo_notificacao,
                    c.nome AS categoria
             FROM patologias p
             JOIN categorias_patologias c ON c.id = p.categoria_id
+            JOIN patologia_parasito pp ON pp.patologia_id = p.id
         """
         params = []
         if categoria_id:
@@ -1109,11 +1111,12 @@ def cronicas_patologias(categoria_id: int = None):
     key = f"cronicas:patologias:{categoria_id}"
     if key not in _cache:
         sql = """
-            SELECT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
                    p.notificacao_compulsoria, p.tipo_notificacao,
                    c.nome AS categoria
             FROM patologias p
             JOIN categorias_patologias c ON c.id = p.categoria_id
+            JOIN tratamento_padrao_ouro_cronico tpc ON tpc.patologia_id = p.id
         """
         params = []
         if categoria_id:

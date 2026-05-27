@@ -517,6 +517,16 @@ def bact_detalhe(patologia_id: int):
                 "interacoes": interacoes_by_id[aid],
             }
 
+        sintomas = db.execute(
+            """SELECT s.nome, s.sistema, s.tipo,
+                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+               FROM patologia_sintoma ps
+               JOIN sintomas s ON s.id = ps.sintoma_id
+               WHERE ps.patologia_id = ?
+               ORDER BY ps.ordem, s.nome""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
             "dominio":           "bacteriana",
             "patologia":         dict(pat),
@@ -524,6 +534,7 @@ def bact_detalhe(patologia_id: int):
             "bacterias":         [dict(b) for b in bacterias],
             "top3_medicamentos": synthetic_meds if synthetic_meds else [enrich_atb(r) for r in antibioticos],
             "tratamento_padrao": dict(tratamento) if tratamento else None,
+            "sintomas":          [dict(s) for s in sintomas],
         }
 
     return result
@@ -808,12 +819,23 @@ def virais_detalhe(patologia_id: int):
                 "interacoes": interacoes_by_id[aid],
             }
 
+        sintomas = db.execute(
+            """SELECT s.nome, s.sistema, s.tipo,
+                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+               FROM patologia_sintoma ps
+               JOIN sintomas s ON s.id = ps.sintoma_id
+               WHERE ps.patologia_id = ?
+               ORDER BY ps.ordem, s.nome""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
             "dominio":           "viral",
             "patologia":         dict(pat),
             "agentes":           [dict(a) for a in agentes],
             "top3_medicamentos": synthetic_meds_v if synthetic_meds_v else [enrich_med_viral(r) for r in antivirais],
             "tratamento_padrao": dict(tratamento) if tratamento else None,
+            "sintomas":          [dict(s) for s in sintomas],
         }
 
     return result
@@ -1098,12 +1120,23 @@ def fungicos_detalhe(patologia_id: int):
                 "interacoes": interacoes_by_id[aid],
             }
 
+        sintomas = db.execute(
+            """SELECT s.nome, s.sistema, s.tipo,
+                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+               FROM patologia_sintoma ps
+               JOIN sintomas s ON s.id = ps.sintoma_id
+               WHERE ps.patologia_id = ?
+               ORDER BY ps.ordem, s.nome""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
             "dominio":           "fungico",
             "patologia":         dict(pat),
             "agentes":           [dict(a) for a in agentes],
             "top3_medicamentos": synthetic_meds_f if synthetic_meds_f else [enrich_med_fungico(r) for r in antifungicos],
             "tratamento_padrao": dict(tratamento) if tratamento else None,
+            "sintomas":          [dict(s) for s in sintomas],
         }
 
     return result
@@ -1384,12 +1417,23 @@ def parasitos_detalhe(patologia_id: int):
                 "interacoes": interacoes_by_id[aid],
             }
 
+        sintomas = db.execute(
+            """SELECT s.nome, s.sistema, s.tipo,
+                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+               FROM patologia_sintoma ps
+               JOIN sintomas s ON s.id = ps.sintoma_id
+               WHERE ps.patologia_id = ?
+               ORDER BY ps.ordem, s.nome""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
             "dominio":           "parasitario",
             "patologia":         dict(pat),
             "agentes":           [dict(a) for a in agentes],
             "top3_medicamentos": synthetic_meds_p if synthetic_meds_p else [enrich_ap(r) for r in antiparasitarios],
             "tratamento_padrao": dict(tratamento) if tratamento else None,
+            "sintomas":          [dict(s) for s in sintomas],
         }
 
     return result
@@ -1587,12 +1631,23 @@ def cronicas_detalhe(patologia_id: int):
                 if card:
                     top3_medicamentos.append(card)
 
+        sintomas = db.execute(
+            """SELECT s.nome, s.sistema, s.tipo,
+                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+               FROM patologia_sintoma ps
+               JOIN sintomas s ON s.id = ps.sintoma_id
+               WHERE ps.patologia_id = ?
+               ORDER BY ps.ordem, s.nome""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
             "dominio":           "cronico",
             "patologia":         dict(pat),
             "agentes":           [],
             "top3_medicamentos": top3_medicamentos,
             "tratamento_padrao": dict(tratamento) if tratamento else None,
+            "sintomas":          [dict(s) for s in sintomas],
         }
 
     return result

@@ -59,6 +59,11 @@ from data_sintomas_virais import SINTOMAS_VIRAIS
 from data_sintomas_fungicas import SINTOMAS_FUNGICAS
 from data_sintomas_parasitarias import SINTOMAS_PARASITARIAS
 from data_sintomas_cronicas import SINTOMAS_CRONICAS
+from data_criterios_bacterianas import CRITERIOS_BACTERIANAS
+from data_criterios_virais import CRITERIOS_VIRAIS
+from data_criterios_fungicas import CRITERIOS_FUNGICAS
+from data_criterios_parasitarias import CRITERIOS_PARASITARIAS
+from data_criterios_cronicas import CRITERIOS_CRONICAS
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -1609,6 +1614,11 @@ def build():
     conn.commit()
     print(f"  → {inserted} vínculos inseridos, {skipped} patologias não encontradas")
 
+    print("Inserindo critérios diagnósticos...")
+    inserted, skipped = insert_criterios(conn)
+    conn.commit()
+    print(f"  → {inserted} critérios inseridos, {skipped} patologias não encontradas")
+
     print_summary(conn)
     conn.close()
     print(f"Banco criado em: {DB_PATH}")
@@ -1645,6 +1655,40 @@ def insert_sintomas(conn):
                  s.get("severidade"), s.get("ordem", 0)),
             )
             inserted += 1
+    return inserted, skipped
+
+
+def insert_criterios(conn):
+    all_data = (
+        CRITERIOS_BACTERIANAS + CRITERIOS_VIRAIS +
+        CRITERIOS_FUNGICAS + CRITERIOS_PARASITARIAS + CRITERIOS_CRONICAS
+    )
+    inserted = skipped = 0
+    for entry in all_data:
+        row = conn.execute(
+            "SELECT id FROM patologias WHERE nome = ?", (entry["patologia_nome"],)
+        ).fetchone()
+        if not row:
+            skipped += 1
+            continue
+        pat_id = row[0]
+        for c in entry.get("criterios", []):
+            conn.execute(
+                """INSERT INTO criterios_diagnosticos
+                   (patologia_id, nome, categoria, tipo, descricao, valor_referencia, fonte, ordem)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (pat_id, c["nome"], c.get("categoria"), c.get("tipo"),
+                 c.get("descricao"), c.get("valor_referencia"), c.get("fonte"), c.get("ordem", 0)),
+            )
+            inserted += 1
+        for e in entry.get("escores", []):
+            conn.execute(
+                """INSERT INTO escores_diagnosticos
+                   (patologia_id, nome_escore, descricao, interpretacao, fonte, ordem)
+                   VALUES (?,?,?,?,?,?)""",
+                (pat_id, e["nome_escore"], e.get("descricao"),
+                 e.get("interpretacao"), e.get("fonte"), e.get("ordem", 0)),
+            )
     return inserted, skipped
 
 

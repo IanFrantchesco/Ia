@@ -54,6 +54,11 @@ from data_cronicas_tratamento import TRATAMENTO_PADRAO_OURO_CRONICO
 from data_cronicas_posologia_interacoes import (
     POSOLOGIA_CRONICA, INTERACOES_MEDICAMENTOS_CRONICOS,
 )
+from data_sintomas_bacterianas import SINTOMAS_BACTERIANAS
+from data_sintomas_virais import SINTOMAS_VIRAIS
+from data_sintomas_fungicas import SINTOMAS_FUNGICAS
+from data_sintomas_parasitarias import SINTOMAS_PARASITARIAS
+from data_sintomas_cronicas import SINTOMAS_CRONICAS
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -1599,10 +1604,48 @@ def build():
     conn.commit()
     print(f"  → {inserted} inseridas, {skipped} ignoradas")
 
+    print("Inserindo sintomas...")
+    inserted, skipped = insert_sintomas(conn)
+    conn.commit()
+    print(f"  → {inserted} vínculos inseridos, {skipped} patologias não encontradas")
+
     print_summary(conn)
     conn.close()
     print(f"Banco criado em: {DB_PATH}")
     return DB_PATH
+
+
+def insert_sintomas(conn):
+    all_data = (
+        SINTOMAS_BACTERIANAS + SINTOMAS_VIRAIS +
+        SINTOMAS_FUNGICAS + SINTOMAS_PARASITARIAS + SINTOMAS_CRONICAS
+    )
+    inserted = skipped = 0
+    for entry in all_data:
+        row = conn.execute(
+            "SELECT id FROM patologias WHERE nome = ?", (entry["patologia_nome"],)
+        ).fetchone()
+        if not row:
+            skipped += 1
+            continue
+        pat_id = row[0]
+        for s in entry["sintomas"]:
+            conn.execute(
+                "INSERT OR IGNORE INTO sintomas (nome, sistema, tipo) VALUES (?,?,?)",
+                (s["nome"], s.get("sistema"), s.get("tipo")),
+            )
+            sin_id = conn.execute(
+                "SELECT id FROM sintomas WHERE nome = ?", (s["nome"],)
+            ).fetchone()[0]
+            conn.execute(
+                """INSERT OR REPLACE INTO patologia_sintoma
+                   (patologia_id, sintoma_id, frequencia, onset_texto, severidade, ordem)
+                   VALUES (?,?,?,?,?,?)""",
+                (pat_id, sin_id, s.get("frequencia"), s.get("onset_texto"),
+                 s.get("severidade"), s.get("ordem", 0)),
+            )
+            inserted += 1
+    return inserted, skipped
 
 
 if __name__ == "__main__":

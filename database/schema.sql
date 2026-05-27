@@ -767,3 +767,32 @@ CREATE INDEX IF NOT EXISTS idx_posologia_cronica_med    ON posologia_cronica(med
 CREATE INDEX IF NOT EXISTS idx_posologia_cronica_pat    ON posologia_cronica(patologia_id);
 CREATE INDEX IF NOT EXISTS idx_interacoes_med_id        ON interacoes_medicamentos(medicamento_id);
 CREATE INDEX IF NOT EXISTS idx_trat_padrao_cronico_pat  ON tratamento_padrao_ouro_cronico(patologia_id);
+
+-- ============================================================
+-- SINTOMATOLOGIA
+-- Fontes: MS/PCDT, CFM, SBC, SBI, SBPT, SBMFC
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS sintomas (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome     TEXT NOT NULL UNIQUE,
+    sistema  TEXT CHECK(sistema IN (
+                 'respiratorio','cardiovascular','neurologico','digestivo',
+                 'cutaneo','musculoesqueletico','urinario','ocular',
+                 'otorrinolaringologico','hematologico','endocrino','sistemico','outro'
+             )),
+    tipo     TEXT CHECK(tipo IN ('cardinal','prodromico','sistemico','local','complicacao'))
+);
+
+CREATE TABLE IF NOT EXISTS patologia_sintoma (
+    patologia_id  INTEGER NOT NULL REFERENCES patologias(id),
+    sintoma_id    INTEGER NOT NULL REFERENCES sintomas(id),
+    frequencia    TEXT CHECK(frequencia IN ('muito_comum','comum','incomum','raro')),
+    onset_texto   TEXT,
+    severidade    TEXT CHECK(severidade IN ('leve','moderada','grave')),
+    ordem         INTEGER DEFAULT 0,
+    PRIMARY KEY (patologia_id, sintoma_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_patologia_sintoma_pat ON patologia_sintoma(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_patologia_sintoma_sin ON patologia_sintoma(sintoma_id);

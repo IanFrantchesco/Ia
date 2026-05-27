@@ -283,6 +283,26 @@
     .sev-badge { background:#ef4444; color:#fff; font-size:.6rem; font-weight:700; border-radius:50%; width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
     .freq-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 
+    /* ── Critérios Diagnósticos ──────────────────────────────────── */
+    .criterios-section { margin-bottom: 1.25rem; }
+    .criterios-section h4 { font-size:.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 .6rem; }
+    .criterio-group { margin-bottom:.75rem; }
+    .criterio-group-title { font-size:.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin-bottom:.35rem; }
+    .criterio-chip {
+      background:var(--surface); border:1px solid var(--border); border-left-width:3px;
+      border-radius:6px; padding:.42rem .7rem; margin-bottom:.35rem;
+      font-size:.76rem; line-height:1.4;
+    }
+    .criterio-chip .criterio-nome { font-weight:600; color:var(--text); }
+    .criterio-chip .criterio-desc { color:var(--text-muted); font-size:.72rem; margin-top:.15rem; }
+    .criterio-chip .criterio-ref  { color:#2563eb; font-size:.68rem; margin-top:.1rem; font-style:italic; }
+    .tipo-badge { display:inline-block; font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; border-radius:4px; padding:.1rem .35rem; margin-left:.4rem; vertical-align:middle; }
+    .escore-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; margin-bottom:.5rem; }
+    .escore-card .escore-nome { font-weight:700; font-size:.8rem; color:var(--text); margin-bottom:.25rem; }
+    .escore-card .escore-desc { font-size:.73rem; color:var(--text-muted); margin-bottom:.25rem; line-height:1.45; }
+    .escore-card .escore-interp { font-size:.72rem; color:#1e40af; background:#eff6ff; border-radius:4px; padding:.3rem .5rem; }
+    .escore-card .escore-fonte { font-size:.65rem; color:var(--text-muted); margin-top:.25rem; font-style:italic; }
+
     /* ── Agent chips ─────────────────────────────────────────────── */
     .agent-list { display: flex; flex-wrap: wrap; gap: .55rem; margin-bottom: 1.25rem; }
     .agent-chip {
@@ -877,6 +897,67 @@ function renderDetail(data) {
       </div>`;
   }
 
+  // Critérios Diagnósticos
+  const criteriosData = data.criterios_diagnosticos || [];
+  const escoresData   = data.escores_diagnosticos   || [];
+  const tipoColor = {
+    obrigatorio: '#1B5E20', maior: '#2E7D32', menor: '#757575',
+    exclusao: '#B71C1C', suporte: '#1565C0'
+  };
+  const tipoBg = {
+    obrigatorio: '#e8f5e9', maior: '#f1f8e9', menor: '#f5f5f5',
+    exclusao: '#ffebee', suporte: '#e3f2fd'
+  };
+  const tipoLabel = {
+    obrigatorio: 'Obrigatório', maior: 'Maior', menor: 'Menor',
+    exclusao: 'Exclusão', suporte: 'Suporte'
+  };
+  const categLabel = {
+    clinico: 'Clínico', laboratorial: 'Laboratorial', imagem: 'Imagem',
+    microbiologico: 'Microbiológico', histopatologico: 'Histopatológico',
+    epidemiologico: 'Epidemiológico', funcional: 'Funcional',
+    genetico: 'Genético', escore: 'Escore', outro: 'Outro'
+  };
+  let criteriosHtml = '';
+  if (criteriosData.length > 0) {
+    const groups = {};
+    criteriosData.forEach(c => {
+      const cat = c.categoria || 'outro';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(c);
+    });
+    let groupsHtml = '';
+    Object.entries(groups).forEach(([cat, items]) => {
+      const chips = items.map(c => {
+        const cor = tipoColor[c.tipo] || '#607D8B';
+        const bg  = tipoBg[c.tipo]   || '#f5f5f5';
+        const tl  = tipoLabel[c.tipo]|| c.tipo || '';
+        return `<div class="criterio-chip" style="border-left-color:${cor}">
+          <div class="criterio-nome">${c.nome}<span class="tipo-badge" style="background:${bg};color:${cor}">${tl}</span></div>
+          ${c.descricao?`<div class="criterio-desc">${c.descricao}</div>`:''}
+          ${c.valor_referencia?`<div class="criterio-ref">Referência: ${c.valor_referencia}</div>`:''}
+          ${c.fonte?`<div style="font-size:.65rem;color:var(--text-muted);margin-top:.1rem">📋 ${c.fonte}</div>`:''}
+        </div>`;
+      }).join('');
+      groupsHtml += `<div class="criterio-group">
+        <div class="criterio-group-title">${categLabel[cat]||cat}</div>
+        ${chips}
+      </div>`;
+    });
+    const escoresHtml = escoresData.map(e => `
+      <div class="escore-card">
+        <div class="escore-nome">🎯 ${e.nome_escore}</div>
+        ${e.descricao?`<div class="escore-desc">${e.descricao}</div>`:''}
+        ${e.interpretacao?`<div class="escore-interp">📊 ${e.interpretacao}</div>`:''}
+        ${e.fonte?`<div class="escore-fonte">Fonte: ${e.fonte}</div>`:''}
+      </div>`).join('');
+    criteriosHtml = `<div class="criterios-section">
+      <h4>🔬 Critérios Diagnósticos</h4>
+      ${groupsHtml}
+      ${escoresData.length>0?`<h4 style="margin-top:.75rem">📊 Escores Diagnósticos</h4>${escoresHtml}`:''}
+    </div>`;
+  }
+
   // Charts
   const hasCh=atbs.length>0;
   const rNote=isChr?'':`<p class="radar-note">¹Segurança = 100 − resistência BR &nbsp; ²A=100, B=75, C=50, D=25 &nbsp; ³1ª linha=100, 2ª=60, 3ª=30</p>`;
@@ -906,6 +987,7 @@ function renderDetail(data) {
       </div>
       ${agentesHtml}
       ${sintomasHtml}
+      ${criteriosHtml}
       ${chartsHtml}
       <div class="sec-label">Top 3 ${cfg.drugLabel}s Mais Eficazes</div>
       <div class="drug-cards">${drugsHtml}</div>

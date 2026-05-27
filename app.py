@@ -527,14 +527,32 @@ def bact_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
+        criterios = db.execute(
+            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+               FROM criterios_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem, nome""",
+            (patologia_id,),
+        ).fetchall()
+
+        escores = db.execute(
+            """SELECT nome_escore, descricao, interpretacao, fonte
+               FROM escores_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
-            "dominio":           "bacteriana",
-            "patologia":         dict(pat),
-            "agentes":           [dict(b) for b in bacterias],
-            "bacterias":         [dict(b) for b in bacterias],
-            "top3_medicamentos": synthetic_meds if synthetic_meds else [enrich_atb(r) for r in antibioticos],
-            "tratamento_padrao": dict(tratamento) if tratamento else None,
-            "sintomas":          [dict(s) for s in sintomas],
+            "dominio":                "bacteriana",
+            "patologia":              dict(pat),
+            "agentes":                [dict(b) for b in bacterias],
+            "bacterias":              [dict(b) for b in bacterias],
+            "top3_medicamentos":      synthetic_meds if synthetic_meds else [enrich_atb(r) for r in antibioticos],
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               [dict(s) for s in sintomas],
+            "criterios_diagnosticos": [dict(c) for c in criterios],
+            "escores_diagnosticos":   [dict(e) for e in escores],
         }
 
     return result
@@ -829,13 +847,31 @@ def virais_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
+        criterios = db.execute(
+            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+               FROM criterios_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem, nome""",
+            (patologia_id,),
+        ).fetchall()
+
+        escores = db.execute(
+            """SELECT nome_escore, descricao, interpretacao, fonte
+               FROM escores_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
-            "dominio":           "viral",
-            "patologia":         dict(pat),
-            "agentes":           [dict(a) for a in agentes],
-            "top3_medicamentos": synthetic_meds_v if synthetic_meds_v else [enrich_med_viral(r) for r in antivirais],
-            "tratamento_padrao": dict(tratamento) if tratamento else None,
-            "sintomas":          [dict(s) for s in sintomas],
+            "dominio":                "viral",
+            "patologia":              dict(pat),
+            "agentes":                [dict(a) for a in agentes],
+            "top3_medicamentos":      synthetic_meds_v if synthetic_meds_v else [enrich_med_viral(r) for r in antivirais],
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               [dict(s) for s in sintomas],
+            "criterios_diagnosticos": [dict(c) for c in criterios],
+            "escores_diagnosticos":   [dict(e) for e in escores],
         }
 
     return result
@@ -1130,13 +1166,31 @@ def fungicos_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
+        criterios = db.execute(
+            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+               FROM criterios_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem, nome""",
+            (patologia_id,),
+        ).fetchall()
+
+        escores = db.execute(
+            """SELECT nome_escore, descricao, interpretacao, fonte
+               FROM escores_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
-            "dominio":           "fungico",
-            "patologia":         dict(pat),
-            "agentes":           [dict(a) for a in agentes],
-            "top3_medicamentos": synthetic_meds_f if synthetic_meds_f else [enrich_med_fungico(r) for r in antifungicos],
-            "tratamento_padrao": dict(tratamento) if tratamento else None,
-            "sintomas":          [dict(s) for s in sintomas],
+            "dominio":                "fungico",
+            "patologia":              dict(pat),
+            "agentes":                [dict(a) for a in agentes],
+            "top3_medicamentos":      synthetic_meds_f if synthetic_meds_f else [enrich_med_fungico(r) for r in antifungicos],
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               [dict(s) for s in sintomas],
+            "criterios_diagnosticos": [dict(c) for c in criterios],
+            "escores_diagnosticos":   [dict(e) for e in escores],
         }
 
     return result
@@ -1427,13 +1481,31 @@ def parasitos_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
+        criterios = db.execute(
+            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+               FROM criterios_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem, nome""",
+            (patologia_id,),
+        ).fetchall()
+
+        escores = db.execute(
+            """SELECT nome_escore, descricao, interpretacao, fonte
+               FROM escores_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
-            "dominio":           "parasitario",
-            "patologia":         dict(pat),
-            "agentes":           [dict(a) for a in agentes],
-            "top3_medicamentos": synthetic_meds_p if synthetic_meds_p else [enrich_ap(r) for r in antiparasitarios],
-            "tratamento_padrao": dict(tratamento) if tratamento else None,
-            "sintomas":          [dict(s) for s in sintomas],
+            "dominio":                "parasitario",
+            "patologia":              dict(pat),
+            "agentes":                [dict(a) for a in agentes],
+            "top3_medicamentos":      synthetic_meds_p if synthetic_meds_p else [enrich_ap(r) for r in antiparasitarios],
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               [dict(s) for s in sintomas],
+            "criterios_diagnosticos": [dict(c) for c in criterios],
+            "escores_diagnosticos":   [dict(e) for e in escores],
         }
 
     return result
@@ -1641,13 +1713,31 @@ def cronicas_detalhe(patologia_id: int):
             (patologia_id,),
         ).fetchall()
 
+        criterios = db.execute(
+            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+               FROM criterios_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem, nome""",
+            (patologia_id,),
+        ).fetchall()
+
+        escores = db.execute(
+            """SELECT nome_escore, descricao, interpretacao, fonte
+               FROM escores_diagnosticos
+               WHERE patologia_id = ?
+               ORDER BY ordem""",
+            (patologia_id,),
+        ).fetchall()
+
         result = {
-            "dominio":           "cronico",
-            "patologia":         dict(pat),
-            "agentes":           [],
-            "top3_medicamentos": top3_medicamentos,
-            "tratamento_padrao": dict(tratamento) if tratamento else None,
-            "sintomas":          [dict(s) for s in sintomas],
+            "dominio":                "cronico",
+            "patologia":              dict(pat),
+            "agentes":                [],
+            "top3_medicamentos":      top3_medicamentos,
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               [dict(s) for s in sintomas],
+            "criterios_diagnosticos": [dict(c) for c in criterios],
+            "escores_diagnosticos":   [dict(e) for e in escores],
         }
 
     return result

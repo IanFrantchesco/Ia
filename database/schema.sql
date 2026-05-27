@@ -796,3 +796,39 @@ CREATE TABLE IF NOT EXISTS patologia_sintoma (
 
 CREATE INDEX IF NOT EXISTS idx_patologia_sintoma_pat ON patologia_sintoma(patologia_id);
 CREATE INDEX IF NOT EXISTS idx_patologia_sintoma_sin ON patologia_sintoma(sintoma_id);
+
+-- ============================================================
+-- CRITÉRIOS DIAGNÓSTICOS
+-- Fontes: MS/PCDT, CFM, SBC, SBI, SBPT, ABN, SBMFC e diretrizes de especialidades
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS criterios_diagnosticos (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id     INTEGER NOT NULL REFERENCES patologias(id),
+    nome             TEXT NOT NULL,
+    categoria        TEXT CHECK(categoria IN (
+                         'clinico','laboratorial','imagem','microbiologico',
+                         'histopatologico','epidemiologico','funcional',
+                         'genetico','escore','outro'
+                     )),
+    tipo             TEXT CHECK(tipo IN (
+                         'obrigatorio','maior','menor','exclusao','suporte'
+                     )),
+    descricao        TEXT,
+    valor_referencia TEXT,
+    fonte            TEXT,
+    ordem            INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS escores_diagnosticos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    patologia_id    INTEGER NOT NULL REFERENCES patologias(id),
+    nome_escore     TEXT NOT NULL,
+    descricao       TEXT,
+    interpretacao   TEXT,
+    fonte           TEXT,
+    ordem           INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_criterio_patologia ON criterios_diagnosticos(patologia_id);
+CREATE INDEX IF NOT EXISTS idx_escore_patologia   ON escores_diagnosticos(patologia_id);

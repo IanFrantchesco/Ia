@@ -460,8 +460,10 @@
       background: linear-gradient(90deg, #f59e0b, #d97706);
     }
     .trat-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .9rem; margin-bottom: .9rem; flex-wrap: wrap; }
-    .trat-principal { font-size: 1.05rem; font-weight: 800; color: #92400e; }
-    .trat-comb { font-size: .8rem; color: var(--muted); font-style: italic; margin-top: .1rem; }
+    .trat-principal-row  { display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem; }
+    .trat-principal-drug { font-size: 1.05rem; font-weight: 800; color: #92400e; }
+    .trat-drug-sep       { font-size: .95rem; font-weight: 700; color: #b45309; opacity: .7; }
+    .trat-comb { display: none; }
     .trat-badges { display: flex; flex-wrap: wrap; gap: .3rem; }
     .badge-grau {
       font-size: .66rem; font-weight: 800; padding: .2rem .55rem;
@@ -871,11 +873,15 @@ function renderDetail(data) {
     const gD={A:'Recomendação Forte',B:'Recomendação Moderada',C:'Recomendação Fraca',D:'Consenso de Especialistas'};
     const nD={I:'Evidência I (ECR)',II:'Evidência II (Observacional)',III:'Evidência III (Consenso)'};
     const pd=trat.antibiotico_principal||trat.antiviral_principal||trat.antifungico_principal||trat.antiparasitario_principal||trat.medicamento_principal||'—';
+    const _combStr=trat.combinacao?trat.combinacao.replace(/^\+\s*/,''):'';
+    const _combDrugs=_combStr?_combStr.split(/\s*\+\s*/).map(d=>d.trim()).filter(Boolean):[];
+    const _allDrugs=[pd,..._combDrugs];
+    const _headerDrugsHtml=_allDrugs.map(d=>`<span class="trat-principal-drug">${d}</span>`).join('<span class="trat-drug-sep"> + </span>');
     tratHtml=`
       <div class="sec-label">Tratamento Padrão-Ouro</div>
       <div class="trat-card">
         <div class="trat-header">
-          <div><div class="trat-principal">${pd}</div>${trat.combinacao?`<div class="trat-comb">${trat.combinacao}</div>`:''}</div>
+          <div><div class="trat-principal-row">${_headerDrugsHtml}</div></div>
           <div class="trat-badges">
             ${trat.grau_recomendacao?`<span class="badge-grau">Grau ${trat.grau_recomendacao} — ${gD[trat.grau_recomendacao]||''}</span>`:''}
             ${trat.nivel_evidencia?`<span class="badge-ev2">${nD[trat.nivel_evidencia]||trat.nivel_evidencia}</span>`:''}

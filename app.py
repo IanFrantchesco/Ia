@@ -1,21 +1,19 @@
 """
-Backend FastAPI — Brasil Político
-Dashboard comparativo de presidentes (1930-2024)
+Backend FastAPI — Patologias
+Painel clínico: bacterianas, virais, fúngicas, parasitárias e crônicas.
+Critérios diagnósticos, tratamento padrão-ouro, posologia e interações.
 """
 
 import logging
-import os
 import re
 import sqlite3
 from collections import defaultdict
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List
 
-import anthropic
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,40 +21,17 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DB_PATH      = Path(__file__).parent / "output" / "brasil_economico.db"
 DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.sqlite"
 STATIC       = Path(__file__).parent / "static"
 
-app = FastAPI(title="Brasil Político + Patologias Bacterianas")
+app = FastAPI(title="Patologias — Painel Clínico")
 
 _cache: dict = {}
 
 EVIDENCIA_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
 LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
 
-CAMPOS_ANALISE = {
-    "presidente", "ano_inicio", "ano_fim", "partido",
-    "media_crescimento_pib", "media_pib_per_capita", "media_inflacao",
-    "media_desemprego", "media_selic", "media_cambio", "media_divida_pib",
-    "media_resultado_primario", "media_reservas", "media_exportacoes",
-    "media_importacoes", "media_balanca_comercial", "media_ied",
-    "media_fbcf", "media_gini", "media_idh", "media_pobreza",
-    "media_esperanca_vida", "media_mortalidade", "media_salario_min",
-}
-
 # ── helpers ────────────────────────────────────────────────────────────────
-
-@contextmanager
-def conn():
-    db = sqlite3.connect(DB_PATH, timeout=10)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA busy_timeout=5000")
-    try:
-        yield db
-    finally:
-        db.close()
-
 
 @contextmanager
 def conn_bact():
@@ -74,168 +49,27 @@ def conn_bact():
 
 @app.on_event("startup")
 def startup_check():
-    for path, name in [
-        (DB_PATH,      "brasil_economico"),
-        (DB_BACT_PATH, "patologias_bacterianas"),
-    ]:
-        if path.exists():
-            log.info("DB ok: %s", path.name)
-        else:
-            log.error("DB não encontrado: %s", path)
+    if DB_BACT_PATH.exists():
+        log.info("DB ok: %s", DB_BACT_PATH.name)
+    else:
+        log.error("DB não encontrado: %s", DB_BACT_PATH)
 
 
 # ── endpoints ──────────────────────────────────────────────────────────────
+
+@app.get("/")
+def root():
+    return FileResponse(STATIC / "patologias.html")
+
 
 @app.get("/health")
 def health():
     return {
         "status": "ok",
         "dbs": {
-            "brasil_economico":       DB_PATH.exists(),
             "patologias_bacterianas": DB_BACT_PATH.exists(),
         },
     }
-
-
-@app.get("/api/presidentes")
-def list_presidentes():
-    if "presidentes" not in _cache:
-        with conn() as db:
-            rows = db.execute("""
-                SELECT DISTINCT presidente, partido, fase,
-                       MIN(ano) as ano_inicio, MAX(ano) as ano_fim
-                FROM indicadores_brasil
-                GROUP BY presidente
-                ORDER BY MIN(ano)
-            """).fetchall()
-        _cache["presidentes"] = [dict(r) for r in rows]
-    return _cache["presidentes"]
-
-
-@app.get("/api/resumo/{presidente}")
-def get_resumo(presidente: str):
-    with conn() as db:
-        row = db.execute("""
-            SELECT
-                presidente, partido, fase,
-                MIN(ano) as ano_inicio, MAX(ano) as ano_fim,
-                ROUND(AVG(crescimento_pib_real_pct),   2) as media_crescimento_pib,
-                ROUND(AVG(pib_per_capita_usd),         0) as media_pib_per_capita,
-                ROUND(AVG(inflacao_pct),               2) as media_inflacao,
-                ROUND(AVG(taxa_desemprego_pct),        2) as media_desemprego,
-                ROUND(AVG(selic_pct),                  2) as media_selic,
-                ROUND(AVG(cambio_brl_usd),             4) as media_cambio,
-                ROUND(AVG(divida_bruta_pib_pct),       2) as media_divida_pib,
-                ROUND(AVG(resultado_primario_pib_pct), 2) as media_resultado_primario,
-                ROUND(AVG(reservas_internacionais_bi_usd), 2) as media_reservas,
-                ROUND(AVG(exportacoes_bi_usd),         2) as media_exportacoes,
-                ROUND(AVG(importacoes_bi_usd),         2) as media_importacoes,
-                ROUND(AVG(balanca_comercial_bi_usd),   2) as media_balanca_comercial,
-                ROUND(AVG(ied_entrada_bi_usd),         2) as media_ied,
-                ROUND(AVG(fbcf_pib_pct),               2) as media_fbcf,
-                ROUND(AVG(coeficiente_gini),           4) as media_gini,
-                ROUND(AVG(idh),                        4) as media_idh,
-                ROUND(AVG(taxa_pobreza_extrema_pct),   2) as media_pobreza,
-                ROUND(AVG(esperanca_vida_anos),        2) as media_esperanca_vida,
-                ROUND(AVG(mortalidade_infantil_por_mil), 2) as media_mortalidade,
-                ROUND(AVG(salario_minimo_real_brl),    0) as media_salario_min
-            FROM indicadores_brasil
-            WHERE presidente = ?
-            GROUP BY presidente
-        """, (presidente,)).fetchone()
-    if not row:
-        raise HTTPException(404, "Presidente não encontrado")
-    return dict(row)
-
-
-class AnaliseRequest(BaseModel):
-    presidentes: List[dict]
-
-    @field_validator("presidentes")
-    @classmethod
-    def valida_presidentes(cls, v):
-        if not v:
-            raise ValueError("Ao menos 1 presidente é obrigatório")
-        if len(v) > 3:
-            raise ValueError("Máximo de 3 presidentes por análise")
-        for p in v:
-            invalidos = set(p.keys()) - CAMPOS_ANALISE
-            if invalidos:
-                raise ValueError(f"Campos não permitidos: {invalidos}")
-        return v
-
-
-@app.post("/api/analise")
-def gerar_analise(req: AnaliseRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            503,
-            detail="ANTHROPIC_API_KEY não configurada. "
-                   "Defina a variável de ambiente para ativar a análise por IA."
-        )
-
-    linhas = []
-    for p in req.presidentes:
-        linhas.append(
-            f"\n### {p.get('presidente')} ({p.get('ano_inicio')}–{p.get('ano_fim')}) | {p.get('partido')}"
-        )
-        campos = [
-            ("Crescimento médio PIB real", "media_crescimento_pib", "%"),
-            ("PIB per capita médio", "media_pib_per_capita", "USD"),
-            ("Inflação média", "media_inflacao", "%"),
-            ("Desemprego médio", "media_desemprego", "%"),
-            ("SELIC média", "media_selic", "%"),
-            ("Dívida bruta/PIB média", "media_divida_pib", "%"),
-            ("Resultado primário/PIB médio", "media_resultado_primario", "%"),
-            ("Reservas internacionais médias", "media_reservas", "bi USD"),
-            ("Balança comercial média", "media_balanca_comercial", "bi USD"),
-            ("IED médio", "media_ied", "bi USD"),
-            ("FBCF/PIB médio", "media_fbcf", "%"),
-            ("IDH médio", "media_idh", ""),
-            ("Gini médio", "media_gini", ""),
-            ("Pobreza extrema média", "media_pobreza", "%"),
-            ("Esperança de vida média", "media_esperanca_vida", "anos"),
-            ("Mortalidade infantil média", "media_mortalidade", "/mil"),
-            ("Salário mínimo real médio", "media_salario_min", "R$"),
-        ]
-        for label, key, unit in campos:
-            val = p.get(key)
-            if val is not None:
-                linhas.append(f"- {label}: {val} {unit}".strip())
-
-    dados = "\n".join(linhas)
-    prompt = f"""Você é um economista especialista em história econômica do Brasil.
-
-Analise comparativamente os governos abaixo com base nos dados econômicos e sociais.
-Seja objetivo, equilibrado e contextualizado historicamente.
-Considere que comparações entre períodos pré e pós Plano Real (1994) requerem contexto histórico especial.
-
-{dados}
-
-Estruture sua resposta assim:
-
-## Análise Individual dos Governos
-Para cada governo: destaque 2-3 realizações e 1-2 desafios, contextualizados.
-
-## Comparação Direta
-Compare os governos nos 5 indicadores mais relevantes para o contexto histórico.
-
-## Legado Econômico e Social
-Síntese do legado de cada governo (3-4 linhas por governo).
-
-Use markdown com **negrito** para destacar números importantes.
-Seja baseado em dados, equilibrado politicamente e historicamente contextualizado.
-Responda em português brasileiro."""
-
-    client = anthropic.Anthropic(api_key=api_key)
-    msg = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system="Você é economista especialista em história econômica do Brasil. Responda sempre em português brasileiro.",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return {"analise": msg.content[0].text}
 
 
 # ══════════════════════════════════════════════════════════════════════════

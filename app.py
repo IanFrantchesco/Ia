@@ -239,1276 +239,468 @@ Responda em português brasileiro."""
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PATOLOGIAS BACTERIANAS – endpoints
+# PATOLOGIAS POR AGENTE (bacterianas · virais · fúngicas · parasitárias)
+#
+# Os quatro domínios compartilham exatamente a mesma lógica de detalhe,
+# listagem e categorias — diferindo apenas nos nomes de tabelas/colunas.
+# Toda a configuração que muda entre eles fica em AGENT_DOMAINS; a lógica
+# vive uma única vez em _agent_detalhe / _patologias / _categorias.
 # ══════════════════════════════════════════════════════════════════════════
+
+
+class AgentDomain:
+    """Configuração de um domínio de patologia baseada em agente etiológico.
+
+    Todos os identificadores aqui são constantes confiáveis (nunca entrada
+    do usuário), portanto sua interpolação em SQL via f-string é segura.
+    """
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+AGENT_DOMAINS = {
+    "bacterias": AgentDomain(
+        dominio="bacteriana", route="bacterias",
+        junction="patologia_bacteria", agent_table="bacterias", agent_fk="bacteria_id",
+        agent_cols=("nome_cientifico", "nome_comum", "gram",
+                    "aerobiose", "formato", "resistencia_natural"),
+        drug_table="antibioticos", drug_class_table="classes_antibioticos",
+        drug_fk="antibiotico_id", efficacy_table="eficacia_antibiotico",
+        treatment_table="tratamento_padrao_ouro", treatment_principal="antibiotico_principal",
+        posology_table="posologia", interactions_table="interacoes_medicamentosas",
+        agent_out_key="bacteria", categorias_filtered=False, extra_agent_key="bacterias",
+    ),
+    "virais": AgentDomain(
+        dominio="viral", route="virais",
+        junction="patologia_virus", agent_table="virus", agent_fk="virus_id",
+        agent_cols=("nome_cientifico", "nome_comum", "tipo_acido_nucleico",
+                    "envelope", "transmissao_principal"),
+        drug_table="antivirais", drug_class_table="classes_antivirais",
+        drug_fk="antiviral_id", efficacy_table="eficacia_antiviral",
+        treatment_table="tratamento_padrao_ouro_viral", treatment_principal="antiviral_principal",
+        posology_table="posologia_viral", interactions_table="interacoes_antivirais",
+        agent_out_key="agente", categorias_filtered=True, extra_agent_key=None,
+    ),
+    "fungicos": AgentDomain(
+        dominio="fungico", route="fungicos",
+        junction="patologia_fungo", agent_table="fungos", agent_fk="fungo_id",
+        agent_cols=("nome_cientifico", "nome_comum", "tipo",
+                    "transmissao_principal", "reservatorio"),
+        drug_table="antifungicos", drug_class_table="classes_antifungicos",
+        drug_fk="antifungico_id", efficacy_table="eficacia_antifungico",
+        treatment_table="tratamento_padrao_ouro_fungico", treatment_principal="antifungico_principal",
+        posology_table="posologia_fungica", interactions_table="interacoes_antifungicos",
+        agent_out_key="agente", categorias_filtered=True, extra_agent_key=None,
+    ),
+    "parasitos": AgentDomain(
+        dominio="parasitario", route="parasitos",
+        junction="patologia_parasito", agent_table="parasitos", agent_fk="parasito_id",
+        agent_cols=("nome_cientifico", "nome_comum", "tipo",
+                    "ciclo_hospedeiro", "vetor"),
+        drug_table="antiparasitarios", drug_class_table="classes_antiparasitarios",
+        drug_fk="antiparasitario_id", efficacy_table="eficacia_antiparasitario",
+        treatment_table="tratamento_padrao_ouro_parasitario",
+        treatment_principal="antiparasitario_principal",
+        posology_table="posologia_parasitaria", interactions_table="interacoes_antiparasitarios",
+        agent_out_key="agente", categorias_filtered=False, extra_agent_key=None,
+    ),
+}
+
+
+# ── helpers compartilhados (usados também pelo domínio crônico) ──────────────
+
+def _fetch_patologia(db, patologia_id):
+    """Cabeçalho da patologia; levanta 404 se não existir."""
+    pat = db.execute(
+        """SELECT p.id, p.nome, p.cid10, p.descricao,
+                  p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
+                  p.notificacao_compulsoria, p.tipo_notificacao,
+                  c.nome AS categoria, c.sistema,
+                  fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
+           FROM patologias p
+           JOIN categorias_patologias c ON c.id = p.categoria_id
+           LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
+           WHERE p.id = ?""",
+        (patologia_id,),
+    ).fetchone()
+    if not pat:
+        raise HTTPException(404, "Patologia não encontrada")
+    return pat
+
+
+def _fetch_clinical(db, patologia_id):
+    """Sintomas, critérios diagnósticos e escores — idênticos em todo domínio."""
+    sintomas = db.execute(
+        """SELECT s.nome, s.sistema, s.tipo,
+                  ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
+           FROM patologia_sintoma ps
+           JOIN sintomas s ON s.id = ps.sintoma_id
+           WHERE ps.patologia_id = ?
+           ORDER BY ps.ordem, s.nome""",
+        (patologia_id,),
+    ).fetchall()
+    criterios = db.execute(
+        """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
+           FROM criterios_diagnosticos
+           WHERE patologia_id = ?
+           ORDER BY ordem, nome""",
+        (patologia_id,),
+    ).fetchall()
+    escores = db.execute(
+        """SELECT nome_escore, descricao, interpretacao, fonte
+           FROM escores_diagnosticos
+           WHERE patologia_id = ?
+           ORDER BY ordem""",
+        (patologia_id,),
+    ).fetchall()
+    return (
+        [dict(s) for s in sintomas],
+        [dict(c) for c in criterios],
+        [dict(e) for e in escores],
+    )
+
+
+# ── listagem e categorias (genéricas) ───────────────────────────────────────
+
+def _categorias(cfg):
+    key = f"{cfg.route}:categorias"
+    if key not in _cache:
+        if cfg.categorias_filtered:
+            sql = f"""SELECT DISTINCT c.id, c.nome, c.sistema
+                      FROM categorias_patologias c
+                      JOIN patologias p ON p.categoria_id = c.id
+                      JOIN {cfg.junction} j ON j.patologia_id = p.id
+                      ORDER BY c.nome"""
+        else:
+            sql = "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
+        with conn_bact() as db:
+            rows = db.execute(sql).fetchall()
+        _cache[key] = [dict(r) for r in rows]
+    return _cache[key]
+
+
+def _patologias(cfg, categoria_id):
+    key = f"{cfg.route}:patologias:{categoria_id}"
+    if key not in _cache:
+        sql = f"""
+            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
+                   p.notificacao_compulsoria, p.tipo_notificacao,
+                   c.nome AS categoria
+            FROM patologias p
+            JOIN categorias_patologias c ON c.id = p.categoria_id
+            JOIN {cfg.junction} j ON j.patologia_id = p.id
+        """
+        params = []
+        if categoria_id:
+            sql += " WHERE p.categoria_id = ?"
+            params.append(categoria_id)
+        sql += " ORDER BY p.nome"
+        with conn_bact() as db:
+            rows = db.execute(sql, params).fetchall()
+        _cache[key] = [dict(r) for r in rows]
+    return _cache[key]
+
+
+# ── detalhe (genérico) ──────────────────────────────────────────────────────
+
+def _agent_detalhe(cfg, patologia_id):
+    with conn_bact() as db:
+        pat = _fetch_patologia(db, patologia_id)
+
+        agent_select = ", ".join(f"ag.{c}" for c in cfg.agent_cols)
+        agentes = db.execute(
+            f"""SELECT {agent_select}, j.papel, j.frequencia_pct
+                FROM {cfg.junction} j
+                JOIN {cfg.agent_table} ag ON ag.id = j.{cfg.agent_fk}
+                WHERE j.patologia_id = ?
+                ORDER BY j.papel, j.frequencia_pct DESC""",
+            (patologia_id,),
+        ).fetchall()
+
+        eff_cols = f"""
+            a.id AS {cfg.drug_fk},
+            a.nome_generico, a.nome_comercial, a.via_administracao, a.disponivel_sus,
+            ca.nome AS classe,
+            ag.nome_cientifico AS {cfg.agent_out_key},
+            e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
+            e.resistencia_br_pct, e.consideracoes,
+            fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano"""
+        eff_from = f"""
+            FROM {cfg.efficacy_table} e
+            JOIN {cfg.drug_table} a ON a.id = e.{cfg.drug_fk}
+            JOIN {cfg.drug_class_table} ca ON ca.id = a.classe_id
+            JOIN {cfg.agent_table} ag ON ag.id = e.{cfg.agent_fk}
+            LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id"""
+
+        meds = db.execute(
+            f"""SELECT {eff_cols} {eff_from}
+                WHERE e.patologia_id = ?
+                ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+                LIMIT 3""",
+            (patologia_id,),
+        ).fetchall()
+
+        # Fallback: eficácia genérica do agente principal (sem patologia específica)
+        if not meds and agentes:
+            principal = agentes[0]["nome_cientifico"]
+            agent_id_row = db.execute(
+                f"SELECT id FROM {cfg.agent_table} WHERE nome_cientifico = ?",
+                (principal,),
+            ).fetchone()
+            if agent_id_row:
+                meds = db.execute(
+                    f"""SELECT {eff_cols} {eff_from}
+                        WHERE e.{cfg.agent_fk} = ? AND e.patologia_id IS NULL
+                        ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+                        LIMIT 3""",
+                    (agent_id_row["id"],),
+                ).fetchall()
+
+        tratamento = db.execute(
+            f"""SELECT t.{cfg.treatment_principal}, t.combinacao,
+                       t.regime_resumido, t.duracao_resumida, t.justificativa,
+                       t.alternativa_alergia, t.alternativa_resistencia,
+                       t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
+                       t.ano_diretriz,
+                       fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
+                FROM {cfg.treatment_table} t
+                LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
+                WHERE t.patologia_id = ?""",
+            (patologia_id,),
+        ).fetchone()
+
+        def _pos_int_single(aid):
+            pos = [dict(r) for r in db.execute(
+                f"""SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
+                           po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
+                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
+                           fo.sigla AS fonte
+                    FROM {cfg.posology_table} po
+                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                    WHERE po.{cfg.drug_fk} = ?
+                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                    ORDER BY po.patologia_id DESC, po.populacao""",
+                (aid, patologia_id),
+            ).fetchall()]
+            ints = [dict(r) for r in db.execute(
+                f"""SELECT i.medicamento_interagente, i.classe_interagente,
+                           i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
+                           fo.sigla AS fonte
+                    FROM {cfg.interactions_table} i
+                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                    WHERE i.{cfg.drug_fk} = ?
+                    ORDER BY CASE i.gravidade
+                      WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
+                      WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
+                (aid,),
+            ).fetchall()]
+            return pos, ints
+
+        # Cards sintéticos a partir da diretriz quando não há dados de eficácia
+        synthetic = []
+        if not meds and tratamento:
+            drug_names = [n for n in (
+                tratamento[cfg.treatment_principal],
+                tratamento["alternativa_alergia"],
+                tratamento["alternativa_resistencia"],
+            ) if n][:3]
+            ev = EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25)
+            for nome in drug_names:
+                first_word = nome.split()[0]
+                drow = db.execute(
+                    f"""SELECT a.id, a.nome_generico, a.nome_comercial,
+                               a.via_administracao, a.disponivel_sus,
+                               ca.nome AS classe
+                        FROM {cfg.drug_table} a
+                        LEFT JOIN {cfg.drug_class_table} ca ON ca.id = a.classe_id
+                        WHERE LOWER(a.nome_generico) LIKE LOWER(?)
+                        LIMIT 1""",
+                    (first_word.lower() + "%",),
+                ).fetchone()
+                sus = 100 if (drow and drow["disponivel_sus"]) else 0
+                aid = drow["id"] if drow else None
+                pos_s, int_s = _pos_int_single(aid) if aid else ([], [])
+                synthetic.append({
+                    "nome_generico":      drow["nome_generico"] if drow else nome,
+                    "nome_comercial":     drow["nome_comercial"] if drow else None,
+                    "via":                drow["via_administracao"] if drow else None,
+                    "disponivel_sus":     bool(drow["disponivel_sus"]) if drow else False,
+                    "classe":             drow["classe"] if drow else None,
+                    cfg.agent_out_key:    None,
+                    "eficacia_pct":       None,
+                    "linha_tratamento":   1,
+                    "nivel_evidencia":    tratamento["nivel_evidencia"],
+                    "resistencia_br_pct": None,
+                    "consideracoes":      tratamento["regime_resumido"],
+                    "fonte":              tratamento["fonte_sigla"],
+                    "fonte_nome":         tratamento["fonte_nome"],
+                    "fonte_ano":          None,
+                    "is_fallback":        True,
+                    "radar": {
+                        "eficacia":       0,
+                        "seguranca":      100,
+                        "evidencia":      ev,
+                        "primeira_linha": 100,
+                        "acesso_sus":     sus,
+                    },
+                    "posologias":         pos_s,
+                    "interacoes":         int_s,
+                })
+
+        # Posologias e interações em lote (elimina N+1: 2 queries em vez de 2×N)
+        drug_ids = [r[cfg.drug_fk] for r in meds]
+        posologias_by_id: defaultdict = defaultdict(list)
+        interacoes_by_id: defaultdict = defaultdict(list)
+
+        if drug_ids:
+            ph = ",".join("?" * len(drug_ids))
+            for row in db.execute(
+                f"""SELECT po.{cfg.drug_fk}, po.populacao, po.dose_unitaria,
+                           po.frequencia, po.via, po.duracao_min_dias,
+                           po.duracao_max_dias, po.duracao_texto,
+                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
+                           fo.sigla AS fonte
+                    FROM {cfg.posology_table} po
+                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                    WHERE po.{cfg.drug_fk} IN ({ph})
+                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                    ORDER BY po.{cfg.drug_fk}, po.patologia_id DESC, po.populacao""",
+                (*drug_ids, patologia_id),
+            ).fetchall():
+                d = dict(row)
+                posologias_by_id[d.pop(cfg.drug_fk)].append(d)
+
+            for row in db.execute(
+                f"""SELECT i.{cfg.drug_fk}, i.medicamento_interagente,
+                           i.classe_interagente, i.mecanismo, i.gravidade,
+                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
+                    FROM {cfg.interactions_table} i
+                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                    WHERE i.{cfg.drug_fk} IN ({ph})
+                    ORDER BY i.{cfg.drug_fk},
+                      CASE i.gravidade
+                        WHEN 'contraindicada' THEN 1
+                        WHEN 'grave'          THEN 2
+                        WHEN 'moderada'       THEN 3
+                        WHEN 'leve'           THEN 4
+                      END""",
+                drug_ids,
+            ).fetchall():
+                d = dict(row)
+                interacoes_by_id[d.pop(cfg.drug_fk)].append(d)
+
+        def enrich(r):
+            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
+            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
+            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
+            sus = 100 if r["disponivel_sus"] else 0
+            aid = r[cfg.drug_fk]
+            return {
+                "nome_generico":      r["nome_generico"],
+                "nome_comercial":     r["nome_comercial"],
+                "via":                r["via_administracao"],
+                "disponivel_sus":     bool(r["disponivel_sus"]),
+                "classe":             r["classe"],
+                cfg.agent_out_key:    r[cfg.agent_out_key],
+                "eficacia_pct":       r["eficacia_pct"],
+                "linha_tratamento":   r["linha_tratamento"],
+                "nivel_evidencia":    r["nivel_evidencia"],
+                "resistencia_br_pct": r["resistencia_br_pct"],
+                "consideracoes":      r["consideracoes"],
+                "fonte":              r["fonte"],
+                "fonte_nome":         r["fonte_nome"],
+                "fonte_ano":          r["fonte_ano"],
+                "radar": {
+                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
+                    "seguranca":      round(seg, 1),
+                    "evidencia":      ev,
+                    "primeira_linha": ln,
+                    "acesso_sus":     sus,
+                },
+                "posologias": posologias_by_id[aid],
+                "interacoes": interacoes_by_id[aid],
+            }
+
+        sintomas, criterios, escores = _fetch_clinical(db, patologia_id)
+
+        result = {
+            "dominio":                cfg.dominio,
+            "patologia":              dict(pat),
+            "agentes":                [dict(a) for a in agentes],
+            "top3_medicamentos":      synthetic if synthetic else [enrich(r) for r in meds],
+            "tratamento_padrao":      dict(tratamento) if tratamento else None,
+            "sintomas":               sintomas,
+            "criterios_diagnosticos": criterios,
+            "escores_diagnosticos":   escores,
+        }
+        # Bacterianas mantêm a chave histórica "bacterias" além de "agentes"
+        if cfg.extra_agent_key:
+            result[cfg.extra_agent_key] = [dict(a) for a in agentes]
+
+    return result
+
+
+# ── rotas finas (uma linha cada) ────────────────────────────────────────────
 
 @app.get("/api/bacterias/categorias")
 def bact_categorias():
-    if "categorias" not in _cache:
-        with conn_bact() as db:
-            rows = db.execute(
-                "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
-            ).fetchall()
-        _cache["categorias"] = [dict(r) for r in rows]
-    return _cache["categorias"]
+    return _categorias(AGENT_DOMAINS["bacterias"])
 
 
 @app.get("/api/bacterias/patologias")
 def bact_patologias(categoria_id: int = None):
-    key = f"patologias:{categoria_id}"
-    if key not in _cache:
-        sql = """
-            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
-                   p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN patologia_bacteria pb ON pb.patologia_id = p.id
-        """
-        params = []
-        if categoria_id:
-            sql += " WHERE p.categoria_id = ?"
-            params.append(categoria_id)
-        sql += " ORDER BY p.nome"
-        with conn_bact() as db:
-            rows = db.execute(sql, params).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    return _cache[key]
+    return _patologias(AGENT_DOMAINS["bacterias"], categoria_id)
 
 
 @app.get("/api/bacterias/patologia/{patologia_id}")
 def bact_detalhe(patologia_id: int):
-    with conn_bact() as db:
-        pat = db.execute(
-            """SELECT p.id, p.nome, p.cid10, p.descricao,
-                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
-                      p.notificacao_compulsoria, p.tipo_notificacao,
-                      c.nome AS categoria, c.sistema,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM patologias p
-               JOIN categorias_patologias c ON c.id = p.categoria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
-               WHERE p.id = ?""",
-            (patologia_id,),
-        ).fetchone()
-        if not pat:
-            raise HTTPException(404, "Patologia não encontrada")
+    return _agent_detalhe(AGENT_DOMAINS["bacterias"], patologia_id)
 
-        bacterias = db.execute(
-            """SELECT b.nome_cientifico, b.nome_comum, b.gram,
-                      b.aerobiose, b.formato, b.resistencia_natural,
-                      pb.papel, pb.frequencia_pct
-               FROM patologia_bacteria pb
-               JOIN bacterias b ON b.id = pb.bacteria_id
-               WHERE pb.patologia_id = ?
-               ORDER BY pb.papel, pb.frequencia_pct DESC""",
-            (patologia_id,),
-        ).fetchall()
-
-        antibioticos = db.execute(
-            """SELECT
-                a.id AS antibiotico_id,
-                a.nome_generico, a.nome_comercial, a.via_administracao,
-                a.disponivel_sus,
-                ca.nome AS classe,
-                b.nome_cientifico AS bacteria,
-                e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                e.resistencia_br_pct, e.consideracoes,
-                fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-               FROM eficacia_antibiotico e
-               JOIN antibioticos a ON a.id = e.antibiotico_id
-               JOIN classes_antibioticos ca ON ca.id = a.classe_id
-               JOIN bacterias b ON b.id = e.bacteria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-               WHERE e.patologia_id = ?
-               ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-               LIMIT 3""",
-            (patologia_id,),
-        ).fetchall()
-
-        if not antibioticos and bacterias:
-            bact_principal = bacterias[0]["nome_cientifico"]
-            bact_id_row = db.execute(
-                "SELECT id FROM bacterias WHERE nome_cientifico = ?",
-                (bact_principal,),
-            ).fetchone()
-            if bact_id_row:
-                antibioticos = db.execute(
-                    """SELECT
-                        a.id AS antibiotico_id,
-                        a.nome_generico, a.nome_comercial, a.via_administracao,
-                        a.disponivel_sus,
-                        ca.nome AS classe,
-                        b.nome_cientifico AS bacteria,
-                        e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                        e.resistencia_br_pct, e.consideracoes,
-                        fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-                       FROM eficacia_antibiotico e
-                       JOIN antibioticos a ON a.id = e.antibiotico_id
-                       JOIN classes_antibioticos ca ON ca.id = a.classe_id
-                       JOIN bacterias b ON b.id = e.bacteria_id
-                       LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-                       WHERE e.bacteria_id = ? AND e.patologia_id IS NULL
-                       ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-                       LIMIT 3""",
-                    (bact_id_row["id"],),
-                ).fetchall()
-
-        tratamento = db.execute(
-            """SELECT t.antibiotico_principal, t.combinacao,
-                      t.regime_resumido, t.duracao_resumida, t.justificativa,
-                      t.alternativa_alergia, t.alternativa_resistencia,
-                      t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
-                      t.ano_diretriz,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM tratamento_padrao_ouro t
-               LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
-               WHERE t.patologia_id = ?""",
-            (patologia_id,),
-        ).fetchone()
-
-        # Synthetic fallback: build cards from treatment table when efficacy data is missing
-        synthetic_meds = []
-        if not antibioticos and tratamento:
-            drug_names = [n for n in [
-                tratamento["antibiotico_principal"],
-                tratamento["alternativa_alergia"],
-                tratamento["alternativa_resistencia"],
-            ] if n][:3]
-            ev = EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25)
-            for nome in drug_names:
-                first_word = nome.split()[0]
-                atb_row = db.execute(
-                    """SELECT a.id, a.nome_generico, a.nome_comercial,
-                              a.via_administracao, a.disponivel_sus,
-                              ca.nome AS classe
-                       FROM antibioticos a
-                       LEFT JOIN classes_antibioticos ca ON ca.id = a.classe_id
-                       WHERE LOWER(a.nome_generico) LIKE LOWER(?)
-                       LIMIT 1""",
-                    (first_word.lower() + "%",),
-                ).fetchone()
-                sus = 100 if (atb_row and atb_row["disponivel_sus"]) else 0
-                aid = atb_row["id"] if atb_row else None
-                pos_s, int_s = [], []
-                if aid:
-                    pos_s = [dict(r) for r in db.execute(
-                        """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
-                                  po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
-                                  po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                                  fo.sigla AS fonte
-                           FROM posologia po
-                           LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                           WHERE po.antibiotico_id = ?
-                             AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                           ORDER BY po.patologia_id DESC, po.populacao""",
-                        (aid, patologia_id),
-                    ).fetchall()]
-                    int_s = [dict(r) for r in db.execute(
-                        """SELECT i.medicamento_interagente, i.classe_interagente,
-                                  i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
-                                  fo.sigla AS fonte
-                           FROM interacoes_medicamentosas i
-                           LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                           WHERE i.antibiotico_id = ?
-                           ORDER BY CASE i.gravidade
-                             WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
-                             WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
-                        (aid,),
-                    ).fetchall()]
-                synthetic_meds.append({
-                    "nome_generico":      atb_row["nome_generico"] if atb_row else nome,
-                    "nome_comercial":     atb_row["nome_comercial"] if atb_row else None,
-                    "via":                atb_row["via_administracao"] if atb_row else None,
-                    "disponivel_sus":     bool(atb_row["disponivel_sus"]) if atb_row else False,
-                    "classe":             atb_row["classe"] if atb_row else None,
-                    "bacteria":           None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar": {
-                        "eficacia":       0,
-                        "seguranca":      100,
-                        "evidencia":      ev,
-                        "primeira_linha": 100,
-                        "acesso_sus":     sus,
-                    },
-                    "posologias":         pos_s,
-                    "interacoes":         int_s,
-                })
-
-        # Bulk-fetch posologias e interacoes (elimina N+1: 2 queries em vez de 2×N)
-        atb_ids = [r["antibiotico_id"] for r in antibioticos]
-        posologias_by_id: defaultdict = defaultdict(list)
-        interacoes_by_id: defaultdict = defaultdict(list)
-
-        if atb_ids:
-            ph = ",".join("?" * len(atb_ids))
-            for row in db.execute(
-                f"""SELECT po.antibiotico_id, po.populacao, po.dose_unitaria,
-                           po.frequencia, po.via, po.duracao_min_dias,
-                           po.duracao_max_dias, po.duracao_texto,
-                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                           fo.sigla AS fonte
-                    FROM posologia po
-                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                    WHERE po.antibiotico_id IN ({ph})
-                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                    ORDER BY po.antibiotico_id, po.patologia_id DESC, po.populacao""",
-                (*atb_ids, pat["id"]),
-            ).fetchall():
-                d = dict(row)
-                posologias_by_id[d.pop("antibiotico_id")].append(d)
-
-            for row in db.execute(
-                f"""SELECT i.antibiotico_id, i.medicamento_interagente,
-                           i.classe_interagente, i.mecanismo, i.gravidade,
-                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                    FROM interacoes_medicamentosas i
-                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                    WHERE i.antibiotico_id IN ({ph})
-                    ORDER BY i.antibiotico_id,
-                      CASE i.gravidade
-                        WHEN 'contraindicada' THEN 1
-                        WHEN 'grave'          THEN 2
-                        WHEN 'moderada'       THEN 3
-                        WHEN 'leve'           THEN 4
-                      END""",
-                atb_ids,
-            ).fetchall():
-                d = dict(row)
-                interacoes_by_id[d.pop("antibiotico_id")].append(d)
-
-        def enrich_atb(r):
-            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
-            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
-            sus = 100 if r["disponivel_sus"] else 0
-            aid = r["antibiotico_id"]
-            return {
-                "nome_generico":      r["nome_generico"],
-                "nome_comercial":     r["nome_comercial"],
-                "via":                r["via_administracao"],
-                "disponivel_sus":     bool(r["disponivel_sus"]),
-                "classe":             r["classe"],
-                "bacteria":           r["bacteria"],
-                "eficacia_pct":       r["eficacia_pct"],
-                "linha_tratamento":   r["linha_tratamento"],
-                "nivel_evidencia":    r["nivel_evidencia"],
-                "resistencia_br_pct": r["resistencia_br_pct"],
-                "consideracoes":      r["consideracoes"],
-                "fonte":              r["fonte"],
-                "fonte_nome":         r["fonte_nome"],
-                "fonte_ano":          r["fonte_ano"],
-                "radar": {
-                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                    "seguranca":      round(seg, 1),
-                    "evidencia":      ev,
-                    "primeira_linha": ln,
-                    "acesso_sus":     sus,
-                },
-                "posologias": posologias_by_id[aid],
-                "interacoes": interacoes_by_id[aid],
-            }
-
-        sintomas = db.execute(
-            """SELECT s.nome, s.sistema, s.tipo,
-                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
-               FROM patologia_sintoma ps
-               JOIN sintomas s ON s.id = ps.sintoma_id
-               WHERE ps.patologia_id = ?
-               ORDER BY ps.ordem, s.nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        criterios = db.execute(
-            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
-               FROM criterios_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem, nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        escores = db.execute(
-            """SELECT nome_escore, descricao, interpretacao, fonte
-               FROM escores_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem""",
-            (patologia_id,),
-        ).fetchall()
-
-        result = {
-            "dominio":                "bacteriana",
-            "patologia":              dict(pat),
-            "agentes":                [dict(b) for b in bacterias],
-            "bacterias":              [dict(b) for b in bacterias],
-            "top3_medicamentos":      synthetic_meds if synthetic_meds else [enrich_atb(r) for r in antibioticos],
-            "tratamento_padrao":      dict(tratamento) if tratamento else None,
-            "sintomas":               [dict(s) for s in sintomas],
-            "criterios_diagnosticos": [dict(c) for c in criterios],
-            "escores_diagnosticos":   [dict(e) for e in escores],
-        }
-
-    return result
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PATOLOGIAS VIRAIS – endpoints
-# ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/virais/categorias")
 def virais_categorias():
-    if "virais_categorias" not in _cache:
-        with conn_bact() as db:
-            rows = db.execute(
-                """SELECT DISTINCT c.id, c.nome, c.sistema
-                   FROM categorias_patologias c
-                   JOIN patologias p ON p.categoria_id = c.id
-                   JOIN patologia_virus pv ON pv.patologia_id = p.id
-                   ORDER BY c.nome"""
-            ).fetchall()
-        _cache["virais_categorias"] = [dict(r) for r in rows]
-    return _cache["virais_categorias"]
+    return _categorias(AGENT_DOMAINS["virais"])
 
 
 @app.get("/api/virais/patologias")
 def virais_patologias(categoria_id: int = None):
-    key = f"virais_patologias:{categoria_id}"
-    if key not in _cache:
-        sql = """
-            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
-                   p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN patologia_virus pv ON pv.patologia_id = p.id
-        """
-        params = []
-        if categoria_id:
-            sql += " WHERE p.categoria_id = ?"
-            params.append(categoria_id)
-        sql += " ORDER BY p.nome"
-        with conn_bact() as db:
-            rows = db.execute(sql, params).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    return _cache[key]
+    return _patologias(AGENT_DOMAINS["virais"], categoria_id)
 
 
 @app.get("/api/virais/patologia/{patologia_id}")
 def virais_detalhe(patologia_id: int):
-    with conn_bact() as db:
-        pat = db.execute(
-            """SELECT p.id, p.nome, p.cid10, p.descricao,
-                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
-                      p.notificacao_compulsoria, p.tipo_notificacao,
-                      c.nome AS categoria, c.sistema,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM patologias p
-               JOIN categorias_patologias c ON c.id = p.categoria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
-               WHERE p.id = ?""",
-            (patologia_id,),
-        ).fetchone()
-        if not pat:
-            raise HTTPException(404, "Patologia não encontrada")
+    return _agent_detalhe(AGENT_DOMAINS["virais"], patologia_id)
 
-        agentes = db.execute(
-            """SELECT v.nome_cientifico, v.nome_comum, v.tipo_acido_nucleico,
-                      v.envelope, v.transmissao_principal,
-                      pv.papel, pv.frequencia_pct
-               FROM patologia_virus pv
-               JOIN virus v ON v.id = pv.virus_id
-               WHERE pv.patologia_id = ?
-               ORDER BY pv.papel, pv.frequencia_pct DESC""",
-            (patologia_id,),
-        ).fetchall()
-
-        antivirais = db.execute(
-            """SELECT a.id AS antiviral_id,
-                      a.nome_generico, a.nome_comercial, a.via_administracao,
-                      a.disponivel_sus,
-                      ca.nome AS classe,
-                      v.nome_cientifico AS agente,
-                      e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                      e.resistencia_br_pct, e.consideracoes,
-                      fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-               FROM eficacia_antiviral e
-               JOIN antivirais a ON a.id = e.antiviral_id
-               JOIN classes_antivirais ca ON ca.id = a.classe_id
-               JOIN virus v ON v.id = e.virus_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-               WHERE e.patologia_id = ?
-               ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-               LIMIT 3""",
-            (patologia_id,),
-        ).fetchall()
-
-        if not antivirais and agentes:
-            virus_principal = agentes[0]["nome_cientifico"]
-            virus_id_row = db.execute(
-                "SELECT id FROM virus WHERE nome_cientifico = ?",
-                (virus_principal,),
-            ).fetchone()
-            if virus_id_row:
-                antivirais = db.execute(
-                    """SELECT a.id AS antiviral_id,
-                              a.nome_generico, a.nome_comercial, a.via_administracao,
-                              a.disponivel_sus,
-                              ca.nome AS classe,
-                              v.nome_cientifico AS agente,
-                              e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                              e.resistencia_br_pct, e.consideracoes,
-                              fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-                       FROM eficacia_antiviral e
-                       JOIN antivirais a ON a.id = e.antiviral_id
-                       JOIN classes_antivirais ca ON ca.id = a.classe_id
-                       JOIN virus v ON v.id = e.virus_id
-                       LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-                       WHERE e.virus_id = ? AND e.patologia_id IS NULL
-                       ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-                       LIMIT 3""",
-                    (virus_id_row["id"],),
-                ).fetchall()
-
-        tratamento = db.execute(
-            """SELECT t.antiviral_principal, t.combinacao,
-                      t.regime_resumido, t.duracao_resumida, t.justificativa,
-                      t.alternativa_alergia, t.alternativa_resistencia,
-                      t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
-                      t.ano_diretriz,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM tratamento_padrao_ouro_viral t
-               LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
-               WHERE t.patologia_id = ?""",
-            (patologia_id,),
-        ).fetchone()
-
-        synthetic_meds_v = []
-        if not antivirais and tratamento:
-            drug_names = [n for n in [
-                tratamento["antiviral_principal"],
-                tratamento["alternativa_alergia"],
-                tratamento["alternativa_resistencia"],
-            ] if n][:3]
-            ev = EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25)
-            for nome in drug_names:
-                first_word = nome.split()[0]
-                av_row = db.execute(
-                    """SELECT a.id, a.nome_generico, a.nome_comercial,
-                              a.via_administracao, a.disponivel_sus,
-                              ca.nome AS classe
-                       FROM antivirais a
-                       LEFT JOIN classes_antivirais ca ON ca.id = a.classe_id
-                       WHERE LOWER(a.nome_generico) LIKE LOWER(?)
-                       LIMIT 1""",
-                    (first_word.lower() + "%",),
-                ).fetchone()
-                sus = 100 if (av_row and av_row["disponivel_sus"]) else 0
-                aid = av_row["id"] if av_row else None
-                pos_s, int_s = [], []
-                if aid:
-                    pos_s = [dict(r) for r in db.execute(
-                        """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
-                                  po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
-                                  po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                                  fo.sigla AS fonte
-                           FROM posologia_viral po
-                           LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                           WHERE po.antiviral_id = ?
-                             AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                           ORDER BY po.patologia_id DESC, po.populacao""",
-                        (aid, patologia_id),
-                    ).fetchall()]
-                    int_s = [dict(r) for r in db.execute(
-                        """SELECT i.medicamento_interagente, i.classe_interagente,
-                                  i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
-                                  fo.sigla AS fonte
-                           FROM interacoes_antivirais i
-                           LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                           WHERE i.antiviral_id = ?
-                           ORDER BY CASE i.gravidade
-                             WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
-                             WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
-                        (aid,),
-                    ).fetchall()]
-                synthetic_meds_v.append({
-                    "nome_generico":      av_row["nome_generico"] if av_row else nome,
-                    "nome_comercial":     av_row["nome_comercial"] if av_row else None,
-                    "via":                av_row["via_administracao"] if av_row else None,
-                    "disponivel_sus":     bool(av_row["disponivel_sus"]) if av_row else False,
-                    "classe":             av_row["classe"] if av_row else None,
-                    "agente":             None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar": {
-                        "eficacia":       0,
-                        "seguranca":      100,
-                        "evidencia":      ev,
-                        "primeira_linha": 100,
-                        "acesso_sus":     sus,
-                    },
-                    "posologias":         pos_s,
-                    "interacoes":         int_s,
-                })
-
-        av_ids = [r["antiviral_id"] for r in antivirais]
-        posologias_by_id: defaultdict = defaultdict(list)
-        interacoes_by_id: defaultdict = defaultdict(list)
-
-        if av_ids:
-            ph = ",".join("?" * len(av_ids))
-            for row in db.execute(
-                f"""SELECT po.antiviral_id, po.populacao, po.dose_unitaria,
-                           po.frequencia, po.via, po.duracao_min_dias,
-                           po.duracao_max_dias, po.duracao_texto,
-                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                           fo.sigla AS fonte
-                    FROM posologia_viral po
-                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                    WHERE po.antiviral_id IN ({ph})
-                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                    ORDER BY po.antiviral_id, po.patologia_id DESC, po.populacao""",
-                (*av_ids, pat["id"]),
-            ).fetchall():
-                d = dict(row)
-                posologias_by_id[d.pop("antiviral_id")].append(d)
-
-            for row in db.execute(
-                f"""SELECT i.antiviral_id, i.medicamento_interagente,
-                           i.classe_interagente, i.mecanismo, i.gravidade,
-                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                    FROM interacoes_antivirais i
-                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                    WHERE i.antiviral_id IN ({ph})
-                    ORDER BY i.antiviral_id,
-                      CASE i.gravidade
-                        WHEN 'contraindicada' THEN 1
-                        WHEN 'grave'          THEN 2
-                        WHEN 'moderada'       THEN 3
-                        WHEN 'leve'           THEN 4
-                      END""",
-                av_ids,
-            ).fetchall():
-                d = dict(row)
-                interacoes_by_id[d.pop("antiviral_id")].append(d)
-
-        def enrich_med_viral(r):
-            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
-            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
-            sus = 100 if r["disponivel_sus"] else 0
-            aid = r["antiviral_id"]
-            return {
-                "nome_generico":      r["nome_generico"],
-                "nome_comercial":     r["nome_comercial"],
-                "via":                r["via_administracao"],
-                "disponivel_sus":     bool(r["disponivel_sus"]),
-                "classe":             r["classe"],
-                "agente":             r["agente"],
-                "eficacia_pct":       r["eficacia_pct"],
-                "linha_tratamento":   r["linha_tratamento"],
-                "nivel_evidencia":    r["nivel_evidencia"],
-                "resistencia_br_pct": r["resistencia_br_pct"],
-                "consideracoes":      r["consideracoes"],
-                "fonte":              r["fonte"],
-                "fonte_nome":         r["fonte_nome"],
-                "fonte_ano":          r["fonte_ano"],
-                "radar": {
-                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                    "seguranca":      round(seg, 1),
-                    "evidencia":      ev,
-                    "primeira_linha": ln,
-                    "acesso_sus":     sus,
-                },
-                "posologias": posologias_by_id[aid],
-                "interacoes": interacoes_by_id[aid],
-            }
-
-        sintomas = db.execute(
-            """SELECT s.nome, s.sistema, s.tipo,
-                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
-               FROM patologia_sintoma ps
-               JOIN sintomas s ON s.id = ps.sintoma_id
-               WHERE ps.patologia_id = ?
-               ORDER BY ps.ordem, s.nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        criterios = db.execute(
-            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
-               FROM criterios_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem, nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        escores = db.execute(
-            """SELECT nome_escore, descricao, interpretacao, fonte
-               FROM escores_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem""",
-            (patologia_id,),
-        ).fetchall()
-
-        result = {
-            "dominio":                "viral",
-            "patologia":              dict(pat),
-            "agentes":                [dict(a) for a in agentes],
-            "top3_medicamentos":      synthetic_meds_v if synthetic_meds_v else [enrich_med_viral(r) for r in antivirais],
-            "tratamento_padrao":      dict(tratamento) if tratamento else None,
-            "sintomas":               [dict(s) for s in sintomas],
-            "criterios_diagnosticos": [dict(c) for c in criterios],
-            "escores_diagnosticos":   [dict(e) for e in escores],
-        }
-
-    return result
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PATOLOGIAS FÚNGICAS – endpoints
-# ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/fungicos/categorias")
 def fungicos_categorias():
-    if "fungicos_categorias" not in _cache:
-        with conn_bact() as db:
-            rows = db.execute(
-                """SELECT DISTINCT c.id, c.nome, c.sistema
-                   FROM categorias_patologias c
-                   JOIN patologias p ON p.categoria_id = c.id
-                   JOIN patologia_fungo pf ON pf.patologia_id = p.id
-                   ORDER BY c.nome"""
-            ).fetchall()
-        _cache["fungicos_categorias"] = [dict(r) for r in rows]
-    return _cache["fungicos_categorias"]
+    return _categorias(AGENT_DOMAINS["fungicos"])
 
 
 @app.get("/api/fungicos/patologias")
 def fungicos_patologias(categoria_id: int = None):
-    key = f"fungicos_patologias:{categoria_id}"
-    if key not in _cache:
-        sql = """
-            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
-                   p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN patologia_fungo pf ON pf.patologia_id = p.id
-        """
-        params = []
-        if categoria_id:
-            sql += " WHERE p.categoria_id = ?"
-            params.append(categoria_id)
-        sql += " ORDER BY p.nome"
-        with conn_bact() as db:
-            rows = db.execute(sql, params).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    return _cache[key]
+    return _patologias(AGENT_DOMAINS["fungicos"], categoria_id)
 
 
 @app.get("/api/fungicos/patologia/{patologia_id}")
 def fungicos_detalhe(patologia_id: int):
-    with conn_bact() as db:
-        pat = db.execute(
-            """SELECT p.id, p.nome, p.cid10, p.descricao,
-                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
-                      p.notificacao_compulsoria, p.tipo_notificacao,
-                      c.nome AS categoria, c.sistema,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM patologias p
-               JOIN categorias_patologias c ON c.id = p.categoria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
-               WHERE p.id = ?""",
-            (patologia_id,),
-        ).fetchone()
-        if not pat:
-            raise HTTPException(404, "Patologia não encontrada")
+    return _agent_detalhe(AGENT_DOMAINS["fungicos"], patologia_id)
 
-        agentes = db.execute(
-            """SELECT f.nome_cientifico, f.nome_comum, f.tipo,
-                      f.transmissao_principal, f.reservatorio,
-                      pf.papel, pf.frequencia_pct
-               FROM patologia_fungo pf
-               JOIN fungos f ON f.id = pf.fungo_id
-               WHERE pf.patologia_id = ?
-               ORDER BY pf.papel, pf.frequencia_pct DESC""",
-            (patologia_id,),
-        ).fetchall()
-
-        antifungicos = db.execute(
-            """SELECT a.id AS antifungico_id,
-                      a.nome_generico, a.nome_comercial, a.via_administracao,
-                      a.disponivel_sus,
-                      ca.nome AS classe,
-                      f.nome_cientifico AS agente,
-                      e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                      e.resistencia_br_pct, e.consideracoes,
-                      fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-               FROM eficacia_antifungico e
-               JOIN antifungicos a ON a.id = e.antifungico_id
-               JOIN classes_antifungicos ca ON ca.id = a.classe_id
-               JOIN fungos f ON f.id = e.fungo_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-               WHERE e.patologia_id = ?
-               ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-               LIMIT 3""",
-            (patologia_id,),
-        ).fetchall()
-
-        if not antifungicos and agentes:
-            fungo_principal = agentes[0]["nome_cientifico"]
-            fungo_id_row = db.execute(
-                "SELECT id FROM fungos WHERE nome_cientifico = ?",
-                (fungo_principal,),
-            ).fetchone()
-            if fungo_id_row:
-                antifungicos = db.execute(
-                    """SELECT a.id AS antifungico_id,
-                              a.nome_generico, a.nome_comercial, a.via_administracao,
-                              a.disponivel_sus,
-                              ca.nome AS classe,
-                              f.nome_cientifico AS agente,
-                              e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                              e.resistencia_br_pct, e.consideracoes,
-                              fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-                       FROM eficacia_antifungico e
-                       JOIN antifungicos a ON a.id = e.antifungico_id
-                       JOIN classes_antifungicos ca ON ca.id = a.classe_id
-                       JOIN fungos f ON f.id = e.fungo_id
-                       LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-                       WHERE e.fungo_id = ? AND e.patologia_id IS NULL
-                       ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-                       LIMIT 3""",
-                    (fungo_id_row["id"],),
-                ).fetchall()
-
-        tratamento = db.execute(
-            """SELECT t.antifungico_principal, t.combinacao,
-                      t.regime_resumido, t.duracao_resumida, t.justificativa,
-                      t.alternativa_alergia, t.alternativa_resistencia,
-                      t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
-                      t.ano_diretriz,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM tratamento_padrao_ouro_fungico t
-               LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
-               WHERE t.patologia_id = ?""",
-            (patologia_id,),
-        ).fetchone()
-
-        synthetic_meds_f = []
-        if not antifungicos and tratamento:
-            drug_names = [n for n in [
-                tratamento["antifungico_principal"],
-                tratamento["alternativa_alergia"],
-                tratamento["alternativa_resistencia"],
-            ] if n][:3]
-            ev = EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25)
-            for nome in drug_names:
-                first_word = nome.split()[0]
-                af_row = db.execute(
-                    """SELECT a.id, a.nome_generico, a.nome_comercial,
-                              a.via_administracao, a.disponivel_sus,
-                              ca.nome AS classe
-                       FROM antifungicos a
-                       LEFT JOIN classes_antifungicos ca ON ca.id = a.classe_id
-                       WHERE LOWER(a.nome_generico) LIKE LOWER(?)
-                       LIMIT 1""",
-                    (first_word.lower() + "%",),
-                ).fetchone()
-                sus = 100 if (af_row and af_row["disponivel_sus"]) else 0
-                aid = af_row["id"] if af_row else None
-                pos_s, int_s = [], []
-                if aid:
-                    pos_s = [dict(r) for r in db.execute(
-                        """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
-                                  po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
-                                  po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                                  fo.sigla AS fonte
-                           FROM posologia_fungica po
-                           LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                           WHERE po.antifungico_id = ?
-                             AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                           ORDER BY po.patologia_id DESC, po.populacao""",
-                        (aid, patologia_id),
-                    ).fetchall()]
-                    int_s = [dict(r) for r in db.execute(
-                        """SELECT i.medicamento_interagente, i.classe_interagente,
-                                  i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
-                                  fo.sigla AS fonte
-                           FROM interacoes_antifungicos i
-                           LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                           WHERE i.antifungico_id = ?
-                           ORDER BY CASE i.gravidade
-                             WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
-                             WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
-                        (aid,),
-                    ).fetchall()]
-                synthetic_meds_f.append({
-                    "nome_generico":      af_row["nome_generico"] if af_row else nome,
-                    "nome_comercial":     af_row["nome_comercial"] if af_row else None,
-                    "via":                af_row["via_administracao"] if af_row else None,
-                    "disponivel_sus":     bool(af_row["disponivel_sus"]) if af_row else False,
-                    "classe":             af_row["classe"] if af_row else None,
-                    "agente":             None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar": {
-                        "eficacia":       0,
-                        "seguranca":      100,
-                        "evidencia":      ev,
-                        "primeira_linha": 100,
-                        "acesso_sus":     sus,
-                    },
-                    "posologias":         pos_s,
-                    "interacoes":         int_s,
-                })
-
-        af_ids = [r["antifungico_id"] for r in antifungicos]
-        posologias_by_id: defaultdict = defaultdict(list)
-        interacoes_by_id: defaultdict = defaultdict(list)
-
-        if af_ids:
-            ph = ",".join("?" * len(af_ids))
-            for row in db.execute(
-                f"""SELECT po.antifungico_id, po.populacao, po.dose_unitaria,
-                           po.frequencia, po.via, po.duracao_min_dias,
-                           po.duracao_max_dias, po.duracao_texto,
-                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                           fo.sigla AS fonte
-                    FROM posologia_fungica po
-                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                    WHERE po.antifungico_id IN ({ph})
-                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                    ORDER BY po.antifungico_id, po.patologia_id DESC, po.populacao""",
-                (*af_ids, pat["id"]),
-            ).fetchall():
-                d = dict(row)
-                posologias_by_id[d.pop("antifungico_id")].append(d)
-
-            for row in db.execute(
-                f"""SELECT i.antifungico_id, i.medicamento_interagente,
-                           i.classe_interagente, i.mecanismo, i.gravidade,
-                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                    FROM interacoes_antifungicos i
-                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                    WHERE i.antifungico_id IN ({ph})
-                    ORDER BY i.antifungico_id,
-                      CASE i.gravidade
-                        WHEN 'contraindicada' THEN 1
-                        WHEN 'grave'          THEN 2
-                        WHEN 'moderada'       THEN 3
-                        WHEN 'leve'           THEN 4
-                      END""",
-                af_ids,
-            ).fetchall():
-                d = dict(row)
-                interacoes_by_id[d.pop("antifungico_id")].append(d)
-
-        def enrich_med_fungico(r):
-            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
-            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
-            sus = 100 if r["disponivel_sus"] else 0
-            aid = r["antifungico_id"]
-            return {
-                "nome_generico":      r["nome_generico"],
-                "nome_comercial":     r["nome_comercial"],
-                "via":                r["via_administracao"],
-                "disponivel_sus":     bool(r["disponivel_sus"]),
-                "classe":             r["classe"],
-                "agente":             r["agente"],
-                "eficacia_pct":       r["eficacia_pct"],
-                "linha_tratamento":   r["linha_tratamento"],
-                "nivel_evidencia":    r["nivel_evidencia"],
-                "resistencia_br_pct": r["resistencia_br_pct"],
-                "consideracoes":      r["consideracoes"],
-                "fonte":              r["fonte"],
-                "fonte_nome":         r["fonte_nome"],
-                "fonte_ano":          r["fonte_ano"],
-                "radar": {
-                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                    "seguranca":      round(seg, 1),
-                    "evidencia":      ev,
-                    "primeira_linha": ln,
-                    "acesso_sus":     sus,
-                },
-                "posologias": posologias_by_id[aid],
-                "interacoes": interacoes_by_id[aid],
-            }
-
-        sintomas = db.execute(
-            """SELECT s.nome, s.sistema, s.tipo,
-                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
-               FROM patologia_sintoma ps
-               JOIN sintomas s ON s.id = ps.sintoma_id
-               WHERE ps.patologia_id = ?
-               ORDER BY ps.ordem, s.nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        criterios = db.execute(
-            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
-               FROM criterios_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem, nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        escores = db.execute(
-            """SELECT nome_escore, descricao, interpretacao, fonte
-               FROM escores_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem""",
-            (patologia_id,),
-        ).fetchall()
-
-        result = {
-            "dominio":                "fungico",
-            "patologia":              dict(pat),
-            "agentes":                [dict(a) for a in agentes],
-            "top3_medicamentos":      synthetic_meds_f if synthetic_meds_f else [enrich_med_fungico(r) for r in antifungicos],
-            "tratamento_padrao":      dict(tratamento) if tratamento else None,
-            "sintomas":               [dict(s) for s in sintomas],
-            "criterios_diagnosticos": [dict(c) for c in criterios],
-            "escores_diagnosticos":   [dict(e) for e in escores],
-        }
-
-    return result
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PATOLOGIAS PARASITÁRIAS – endpoints
-# ══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/parasitos/categorias")
 def parasitos_categorias():
-    if "parasitos:categorias" not in _cache:
-        with conn_bact() as db:
-            rows = db.execute(
-                "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
-            ).fetchall()
-        _cache["parasitos:categorias"] = [dict(r) for r in rows]
-    return _cache["parasitos:categorias"]
+    return _categorias(AGENT_DOMAINS["parasitos"])
 
 
 @app.get("/api/parasitos/patologias")
 def parasitos_patologias(categoria_id: int = None):
-    key = f"parasitos:patologias:{categoria_id}"
-    if key not in _cache:
-        sql = """
-            SELECT DISTINCT p.id, p.nome, p.cid10, p.prevalencia_br, p.mortalidade_br,
-                   p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN patologia_parasito pp ON pp.patologia_id = p.id
-        """
-        params = []
-        if categoria_id:
-            sql += " WHERE p.categoria_id = ?"
-            params.append(categoria_id)
-        sql += " ORDER BY p.nome"
-        with conn_bact() as db:
-            rows = db.execute(sql, params).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    return _cache[key]
+    return _patologias(AGENT_DOMAINS["parasitos"], categoria_id)
 
 
 @app.get("/api/parasitos/patologia/{patologia_id}")
 def parasitos_detalhe(patologia_id: int):
-    with conn_bact() as db:
-        pat = db.execute(
-            """SELECT p.id, p.nome, p.cid10, p.descricao,
-                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
-                      p.notificacao_compulsoria, p.tipo_notificacao,
-                      c.nome AS categoria, c.sistema,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM patologias p
-               JOIN categorias_patologias c ON c.id = p.categoria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
-               WHERE p.id = ?""",
-            (patologia_id,),
-        ).fetchone()
-        if not pat:
-            raise HTTPException(404, "Patologia não encontrada")
-
-        agentes = db.execute(
-            """SELECT ps.nome_cientifico, ps.nome_comum, ps.tipo,
-                      ps.ciclo_hospedeiro, ps.vetor,
-                      pp.papel, pp.frequencia_pct
-               FROM patologia_parasito pp
-               JOIN parasitos ps ON ps.id = pp.parasito_id
-               WHERE pp.patologia_id = ?
-               ORDER BY pp.papel, pp.frequencia_pct DESC""",
-            (patologia_id,),
-        ).fetchall()
-
-        antiparasitarios = db.execute(
-            """SELECT a.id AS antiparasitario_id,
-                      a.nome_generico, a.nome_comercial, a.via_administracao,
-                      a.disponivel_sus,
-                      ca.nome AS classe,
-                      ps.nome_cientifico AS agente,
-                      e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                      e.resistencia_br_pct, e.consideracoes,
-                      fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-               FROM eficacia_antiparasitario e
-               JOIN antiparasitarios a ON a.id = e.antiparasitario_id
-               JOIN classes_antiparasitarios ca ON ca.id = a.classe_id
-               JOIN parasitos ps ON ps.id = e.parasito_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-               WHERE e.patologia_id = ?
-               ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-               LIMIT 3""",
-            (patologia_id,),
-        ).fetchall()
-
-        if not antiparasitarios and agentes:
-            parasito_principal = agentes[0]["nome_cientifico"]
-            parasito_id_row = db.execute(
-                "SELECT id FROM parasitos WHERE nome_cientifico = ?",
-                (parasito_principal,),
-            ).fetchone()
-            if parasito_id_row:
-                antiparasitarios = db.execute(
-                    """SELECT a.id AS antiparasitario_id,
-                              a.nome_generico, a.nome_comercial, a.via_administracao,
-                              a.disponivel_sus,
-                              ca.nome AS classe,
-                              ps.nome_cientifico AS agente,
-                              e.eficacia_pct, e.linha_tratamento, e.nivel_evidencia,
-                              e.resistencia_br_pct, e.consideracoes,
-                              fo.sigla AS fonte, fo.nome AS fonte_nome, fo.ano AS fonte_ano
-                       FROM eficacia_antiparasitario e
-                       JOIN antiparasitarios a ON a.id = e.antiparasitario_id
-                       JOIN classes_antiparasitarios ca ON ca.id = a.classe_id
-                       JOIN parasitos ps ON ps.id = e.parasito_id
-                       LEFT JOIN fontes_oficiais fo ON fo.id = e.fonte_id
-                       WHERE e.parasito_id = ? AND e.patologia_id IS NULL
-                       ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
-                       LIMIT 3""",
-                    (parasito_id_row["id"],),
-                ).fetchall()
-
-        tratamento = db.execute(
-            """SELECT t.antiparasitario_principal, t.combinacao,
-                      t.regime_resumido, t.duracao_resumida, t.justificativa,
-                      t.alternativa_alergia, t.alternativa_resistencia,
-                      t.obs_especiais, t.grau_recomendacao, t.nivel_evidencia,
-                      t.ano_diretriz,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM tratamento_padrao_ouro_parasitario t
-               LEFT JOIN fontes_oficiais fo ON fo.id = t.fonte_id
-               WHERE t.patologia_id = ?""",
-            (patologia_id,),
-        ).fetchone()
-
-        synthetic_meds_p = []
-        if not antiparasitarios and tratamento:
-            drug_names = [n for n in [
-                tratamento["antiparasitario_principal"],
-                tratamento["alternativa_alergia"],
-                tratamento["alternativa_resistencia"],
-            ] if n][:3]
-            ev = EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25)
-            for nome in drug_names:
-                first_word = nome.split()[0]
-                ap_row = db.execute(
-                    """SELECT a.id, a.nome_generico, a.nome_comercial,
-                              a.via_administracao, a.disponivel_sus,
-                              ca.nome AS classe
-                       FROM antiparasitarios a
-                       LEFT JOIN classes_antiparasitarios ca ON ca.id = a.classe_id
-                       WHERE LOWER(a.nome_generico) LIKE LOWER(?)
-                       LIMIT 1""",
-                    (first_word.lower() + "%",),
-                ).fetchone()
-                sus = 100 if (ap_row and ap_row["disponivel_sus"]) else 0
-                aid = ap_row["id"] if ap_row else None
-                pos_s, int_s = [], []
-                if aid:
-                    pos_s = [dict(r) for r in db.execute(
-                        """SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
-                                  po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
-                                  po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                                  fo.sigla AS fonte
-                           FROM posologia_parasitaria po
-                           LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                           WHERE po.antiparasitario_id = ?
-                             AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                           ORDER BY po.patologia_id DESC, po.populacao""",
-                        (aid, patologia_id),
-                    ).fetchall()]
-                    int_s = [dict(r) for r in db.execute(
-                        """SELECT i.medicamento_interagente, i.classe_interagente,
-                                  i.mecanismo, i.gravidade, i.efeito_clinico, i.conduta,
-                                  fo.sigla AS fonte
-                           FROM interacoes_antiparasitarios i
-                           LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                           WHERE i.antiparasitario_id = ?
-                           ORDER BY CASE i.gravidade
-                             WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
-                             WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
-                        (aid,),
-                    ).fetchall()]
-                synthetic_meds_p.append({
-                    "nome_generico":      ap_row["nome_generico"] if ap_row else nome,
-                    "nome_comercial":     ap_row["nome_comercial"] if ap_row else None,
-                    "via":                ap_row["via_administracao"] if ap_row else None,
-                    "disponivel_sus":     bool(ap_row["disponivel_sus"]) if ap_row else False,
-                    "classe":             ap_row["classe"] if ap_row else None,
-                    "agente":             None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar": {
-                        "eficacia":       0,
-                        "seguranca":      100,
-                        "evidencia":      ev,
-                        "primeira_linha": 100,
-                        "acesso_sus":     sus,
-                    },
-                    "posologias":         pos_s,
-                    "interacoes":         int_s,
-                })
-
-        ap_ids = [r["antiparasitario_id"] for r in antiparasitarios]
-        posologias_by_id: defaultdict = defaultdict(list)
-        interacoes_by_id: defaultdict = defaultdict(list)
-
-        if ap_ids:
-            ph = ",".join("?" * len(ap_ids))
-            for row in db.execute(
-                f"""SELECT po.antiparasitario_id, po.populacao, po.dose_unitaria,
-                           po.frequencia, po.via, po.duracao_min_dias,
-                           po.duracao_max_dias, po.duracao_texto,
-                           po.ajuste_renal, po.ajuste_hepatico, po.observacoes,
-                           fo.sigla AS fonte
-                    FROM posologia_parasitaria po
-                    LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                    WHERE po.antiparasitario_id IN ({ph})
-                      AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                    ORDER BY po.antiparasitario_id, po.patologia_id DESC, po.populacao""",
-                (*ap_ids, pat["id"]),
-            ).fetchall():
-                d = dict(row)
-                posologias_by_id[d.pop("antiparasitario_id")].append(d)
-
-            for row in db.execute(
-                f"""SELECT i.antiparasitario_id, i.medicamento_interagente,
-                           i.classe_interagente, i.mecanismo, i.gravidade,
-                           i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                    FROM interacoes_antiparasitarios i
-                    LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                    WHERE i.antiparasitario_id IN ({ph})
-                    ORDER BY i.antiparasitario_id,
-                      CASE i.gravidade
-                        WHEN 'contraindicada' THEN 1
-                        WHEN 'grave'          THEN 2
-                        WHEN 'moderada'       THEN 3
-                        WHEN 'leve'           THEN 4
-                      END""",
-                ap_ids,
-            ).fetchall():
-                d = dict(row)
-                interacoes_by_id[d.pop("antiparasitario_id")].append(d)
-
-        def enrich_ap(r):
-            ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
-            ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
-            sus = 100 if r["disponivel_sus"] else 0
-            aid = r["antiparasitario_id"]
-            return {
-                "nome_generico":      r["nome_generico"],
-                "nome_comercial":     r["nome_comercial"],
-                "via":                r["via_administracao"],
-                "disponivel_sus":     bool(r["disponivel_sus"]),
-                "classe":             r["classe"],
-                "agente":             r["agente"],
-                "eficacia_pct":       r["eficacia_pct"],
-                "linha_tratamento":   r["linha_tratamento"],
-                "nivel_evidencia":    r["nivel_evidencia"],
-                "resistencia_br_pct": r["resistencia_br_pct"],
-                "consideracoes":      r["consideracoes"],
-                "fonte":              r["fonte"],
-                "fonte_nome":         r["fonte_nome"],
-                "fonte_ano":          r["fonte_ano"],
-                "radar": {
-                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                    "seguranca":      round(seg, 1),
-                    "evidencia":      ev,
-                    "primeira_linha": ln,
-                    "acesso_sus":     sus,
-                },
-                "posologias": posologias_by_id[aid],
-                "interacoes": interacoes_by_id[aid],
-            }
-
-        sintomas = db.execute(
-            """SELECT s.nome, s.sistema, s.tipo,
-                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
-               FROM patologia_sintoma ps
-               JOIN sintomas s ON s.id = ps.sintoma_id
-               WHERE ps.patologia_id = ?
-               ORDER BY ps.ordem, s.nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        criterios = db.execute(
-            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
-               FROM criterios_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem, nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        escores = db.execute(
-            """SELECT nome_escore, descricao, interpretacao, fonte
-               FROM escores_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem""",
-            (patologia_id,),
-        ).fetchall()
-
-        result = {
-            "dominio":                "parasitario",
-            "patologia":              dict(pat),
-            "agentes":                [dict(a) for a in agentes],
-            "top3_medicamentos":      synthetic_meds_p if synthetic_meds_p else [enrich_ap(r) for r in antiparasitarios],
-            "tratamento_padrao":      dict(tratamento) if tratamento else None,
-            "sintomas":               [dict(s) for s in sintomas],
-            "criterios_diagnosticos": [dict(c) for c in criterios],
-            "escores_diagnosticos":   [dict(e) for e in escores],
-        }
-
-    return result
+    return _agent_detalhe(AGENT_DOMAINS["parasitos"], patologia_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1661,20 +853,7 @@ def cronicas_detalhe(patologia_id: int):
         }
 
     with conn_bact() as db:
-        pat = db.execute(
-            """SELECT p.id, p.nome, p.cid10, p.descricao,
-                      p.prevalencia_br, p.mortalidade_br, p.populacao_risco,
-                      p.notificacao_compulsoria, p.tipo_notificacao,
-                      c.nome AS categoria, c.sistema,
-                      fo.sigla AS fonte_sigla, fo.nome AS fonte_nome
-               FROM patologias p
-               JOIN categorias_patologias c ON c.id = p.categoria_id
-               LEFT JOIN fontes_oficiais fo ON fo.id = p.fonte_epidemio_id
-               WHERE p.id = ?""",
-            (patologia_id,),
-        ).fetchone()
-        if not pat:
-            raise HTTPException(404, "Patologia não encontrada")
+        pat = _fetch_patologia(db, patologia_id)
 
         tratamento = db.execute(
             """SELECT t.medicamento_principal, t.combinacao,
@@ -1703,31 +882,7 @@ def cronicas_detalhe(patologia_id: int):
                 if card:
                     top3_medicamentos.append(card)
 
-        sintomas = db.execute(
-            """SELECT s.nome, s.sistema, s.tipo,
-                      ps.frequencia, ps.onset_texto, ps.severidade, ps.ordem
-               FROM patologia_sintoma ps
-               JOIN sintomas s ON s.id = ps.sintoma_id
-               WHERE ps.patologia_id = ?
-               ORDER BY ps.ordem, s.nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        criterios = db.execute(
-            """SELECT nome, categoria, tipo, descricao, valor_referencia, fonte, ordem
-               FROM criterios_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem, nome""",
-            (patologia_id,),
-        ).fetchall()
-
-        escores = db.execute(
-            """SELECT nome_escore, descricao, interpretacao, fonte
-               FROM escores_diagnosticos
-               WHERE patologia_id = ?
-               ORDER BY ordem""",
-            (patologia_id,),
-        ).fetchall()
+        sintomas, criterios, escores = _fetch_clinical(db, patologia_id)
 
         result = {
             "dominio":                "cronico",
@@ -1735,9 +890,9 @@ def cronicas_detalhe(patologia_id: int):
             "agentes":                [],
             "top3_medicamentos":      top3_medicamentos,
             "tratamento_padrao":      dict(tratamento) if tratamento else None,
-            "sintomas":               [dict(s) for s in sintomas],
-            "criterios_diagnosticos": [dict(c) for c in criterios],
-            "escores_diagnosticos":   [dict(e) for e in escores],
+            "sintomas":               sintomas,
+            "criterios_diagnosticos": criterios,
+            "escores_diagnosticos":   escores,
         }
 
     return result

@@ -2,6 +2,14 @@
 Backend FastAPI — Patologias
 Painel clínico: bacterianas, virais, fúngicas, parasitárias e crônicas.
 Critérios diagnósticos, tratamento padrão-ouro, posologia e interações.
+
+Arquitetura
+-----------
+Os quatro domínios "por agente" (bacteriano, viral, fúngico, parasitário)
+compartilham a mesma lógica, parametrizada por ``AGENT_DOMAINS`` e servida por
+``_agent_detalhe``. O domínio crônico tem fluxo próprio (não há agente
+etiológico). Os dados vêm de um único SQLite read-only, montado no build por
+``database/build_db.py``; respostas de listagem são memoizadas em ``_cache``.
 """
 
 import logging
@@ -26,8 +34,14 @@ STATIC       = Path(__file__).parent / "static"
 
 app = FastAPI(title="Patologias — Painel Clínico")
 
+# Cache em memória do processo para listagens/categorias (dados read-only).
+# Limitação consciente: não expira e não é compartilhado entre workers — após
+# reconstruir o banco, reinicie o processo para refletir os novos dados.
 _cache: dict = {}
 
+# Normalização 0–100 para o gráfico radar dos medicamentos.
+# EVIDENCIA_SCORE: nível de evidência (A = ECR … D = consenso de especialistas).
+# LINHA_SCORE: linha de tratamento (1ª escolha pesa mais que 3ª).
 EVIDENCIA_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
 LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
 
@@ -35,6 +49,11 @@ LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
 
 @contextmanager
 def conn_bact():
+    """Conexão SQLite por requisição (abre e fecha a cada chamada).
+
+    WAL + busy_timeout permitem leituras concorrentes sem travar enquanto o
+    build reescreve o arquivo; ``row_factory=Row`` dá acesso às colunas por nome.
+    """
     db = sqlite3.connect(DB_BACT_PATH, timeout=10)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
@@ -59,11 +78,13 @@ def startup_check():
 
 @app.get("/")
 def root():
+    """Porta de entrada: serve o painel clínico (patologias.html)."""
     return FileResponse(STATIC / "patologias.html")
 
 
 @app.get("/health")
 def health():
+    """Healthcheck do Railway: confirma que o banco está presente."""
     return {
         "status": "ok",
         "dbs": {
@@ -198,6 +219,12 @@ def _fetch_clinical(db, patologia_id):
 # ── listagem e categorias (genéricas) ───────────────────────────────────────
 
 def _categorias(cfg):
+    """Categorias (sistemas corporais) do domínio.
+
+    ``categorias_filtered=True`` (viral, fúngico) restringe às categorias que
+    de fato têm patologias no domínio; bacteriano e parasitário retornam todas
+    por decisão histórica de produto.
+    """
     key = f"{cfg.route}:categorias"
     if key not in _cache:
         if cfg.categorias_filtered:
@@ -215,6 +242,10 @@ def _categorias(cfg):
 
 
 def _patologias(cfg, categoria_id):
+    """Lista as patologias do domínio, opcionalmente filtradas por categoria.
+
+    Memoizado por (domínio, categoria) em ``_cache``.
+    """
     key = f"{cfg.route}:patologias:{categoria_id}"
     if key not in _cache:
         sql = f"""
@@ -239,6 +270,18 @@ def _patologias(cfg, categoria_id):
 # ── detalhe (genérico) ──────────────────────────────────────────────────────
 
 def _agent_detalhe(cfg, patologia_id):
+    """Detalhe completo de uma patologia por agente etiológico.
+
+    Os "top 3 medicamentos" seguem uma estratégia em três níveis, do dado mais
+    forte ao mais fraco:
+      1. eficácia comparativa específica da patologia (tabela ``eficacia_*``);
+      2. se ausente, eficácia genérica do agente principal (fallback);
+      3. se ainda ausente, cards sintéticos a partir da diretriz padrão-ouro
+         (marcados com ``is_fallback=True``).
+    Posologias e interações dos cards reais são buscadas em lote para evitar o
+    problema N+1. Os identificadores interpolados no SQL vêm sempre de ``cfg``
+    (constantes confiáveis); os valores continuam parametrizados com ``?``.
+    """
     with conn_bact() as db:
         pat = _fetch_patologia(db, patologia_id)
 
@@ -425,6 +468,7 @@ def _agent_detalhe(cfg, patologia_id):
                 interacoes_by_id[d.pop(cfg.drug_fk)].append(d)
 
         def enrich(r):
+            """Monta o card de um medicamento real, com o radar normalizado 0–100."""
             ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
             ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
             seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
@@ -577,20 +621,29 @@ def cronicas_patologias(categoria_id: int = None):
 
 @app.get("/api/cronicas/patologia/{patologia_id}")
 def cronicas_detalhe(patologia_id: int):
+    """Detalhe de patologia crônica.
+
+    Diferente dos domínios por agente: não há agente etiológico. Os
+    medicamentos (até 3) saem da própria diretriz — principal, combinação e
+    alternativa — e cada nome é resolvido na tabela ``medicamentos`` por busca
+    em cascata (``_lookup_med``).
+    """
+    # GRAU_SCORE espelha EVIDENCIA_SCORE de propósito: grau de recomendação e
+    # nível de evidência são eixos distintos, ainda que a escala coincida aqui.
     GRAU_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
 
     def _extract_first_drug(text: str) -> str | None:
-        """Return the drug name from a text that may include dose and combinations."""
+        """Extrai o nome do fármaco de um texto que pode conter dose e combinações."""
         if not text:
             return None
-        # Take only the first drug before any + / & separator
+        # Só o primeiro fármaco, antes de qualquer separador + / &
         part = re.split(r"\s*[+/&]\s*", text)[0].strip()
-        # Strip trailing dose info (digit, parenthesis)
+        # Remove a informação de dose ao final (dígito ou parêntese)
         name = re.split(r"\s+\d|\s+\(", part)[0].strip()
         return name or None
 
     def _lookup_med(db, nome_raw):
-        """3-step cascade lookup in the medicamentos table."""
+        """Busca em cascata na tabela ``medicamentos``: exata → case-insensitive → prefixo."""
         if not nome_raw:
             return None
         for query, param in [
@@ -613,7 +666,7 @@ def cronicas_detalhe(patologia_id: int):
         return None
 
     def _build_card(db, nome_raw, role_label, tratamento, grau_score, patologia_id, linha):
-        """Build one drug card for a chronic pathology; returns None if nome_raw is blank."""
+        """Monta um card de medicamento para patologia crônica; None se ``nome_raw`` vazio."""
         nome_clean = _extract_first_drug(nome_raw)
         if not nome_clean:
             return None
@@ -660,7 +713,7 @@ def cronicas_detalhe(patologia_id: int):
                 ).fetchall()
             ]
 
-        # When posologia is missing, fall back to the regime text so the tab isn't empty
+        # Sem posologia estruturada: usa o texto do regime para a aba não ficar vazia
         if not posologias and tratamento["regime_resumido"]:
             posologias = [{"regime_texto": tratamento["regime_resumido"]}]
 
@@ -733,4 +786,6 @@ def cronicas_detalhe(patologia_id: int):
 
 
 # ── static (deve ser o último mount) ───────────────────────────────────────
+# Catch-all de arquivos estáticos (patologias.html, app.js, css, libs). Precisa
+# vir DEPOIS das rotas /api e da rota "/" para não capturá-las primeiro.
 app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")

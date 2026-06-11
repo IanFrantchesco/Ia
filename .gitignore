@@ -7,3 +7,6 @@ __pycache__/
 *.sqlite-shm
 *.sqlite-wal
 database/_trat_*.py
+
+# Artefatos gerados (o PDF é reproduzível a partir do APRENDER_PYTHON.md)
+*.pdf

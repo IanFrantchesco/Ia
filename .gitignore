@@ -7,3 +7,7 @@ __pycache__/
 *.sqlite-shm
 *.sqlite-wal
 database/_trat_*.py
+
+# Monitor de artigos — dependências e build
+monitor/node_modules/
+monitor/dist/

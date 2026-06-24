@@ -4,9 +4,13 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type ScrapedArticle } from "./scraper.js";
 import { processArticles } from "./article-processor.js";
+import { initDb } from "./db.js";
+import { upsertArticles, getArticles } from "./repository.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
+
+initDb();
 
 const rawPort = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PORT = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3000;
@@ -83,11 +87,16 @@ app.get("/api/process", async (req, res) => {
     }
 
     const result = await processArticles(articles, scrapeErrors);
+
+    const { inserted, skipped } = upsertArticles(result.articles);
+    console.log(`[/api/process] persistidos: ${inserted} novos, ${skipped} já existentes`);
+
     res.json({
       count: result.articles.length,
       articles: result.articles,
       failedDois: result.failedDois,
       scrapeErrors: result.scrapeErrors,
+      db: { inserted, skipped },
     });
   } catch (err) {
     console.error("[/api/process] erro:", err);
@@ -98,6 +107,34 @@ app.get("/api/process", async (req, res) => {
     } else {
       res.status(500).json({ error: "falha no processamento" });
     }
+  }
+});
+
+/**
+ * GET /api/articles?journal=ALL|JAMA|HR|JCE|CAH&days=30
+ * Retorna artigos armazenados no banco de dados.
+ */
+app.get("/api/articles", (req, res) => {
+  const rawJournal = req.query["journal"];
+  const rawDays = req.query["days"];
+
+  const journalParam = typeof rawJournal === "string" ? rawJournal.toUpperCase() : "ALL";
+  const days = typeof rawDays === "string" && Number.isFinite(Number(rawDays)) ? Number(rawDays) : 30;
+
+  if (journalParam !== "ALL" && !VALID_JOURNALS.has(journalParam as Journal)) {
+    res.status(400).json({ error: `journal inválido: ${journalParam}` });
+    return;
+  }
+
+  try {
+    const rows = getArticles({
+      journal: journalParam === "ALL" ? undefined : (journalParam as Journal),
+      days,
+    });
+    res.json({ count: rows.length, articles: rows });
+  } catch (err) {
+    console.error("[/api/articles] erro:", err);
+    res.status(500).json({ error: "falha ao consultar artigos" });
   }
 });
 

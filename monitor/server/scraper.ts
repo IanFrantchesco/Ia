@@ -14,6 +14,7 @@ const CROSSREF_API = "https://api.crossref.org/works";
 const CONTACT_EMAIL = process.env["CONTACT_EMAIL"] ?? "cardionews@example.com";
 const USER_AGENT = `CardioMonitor/1.0 (mailto:${CONTACT_EMAIL})`;
 const MAX_PER_JOURNAL = 10;
+const MAX_CROSSREF_ROWS = MAX_PER_JOURNAL * 5; // margem para descartes editoriais
 const REQUEST_TIMEOUT_MS = 25_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_WAIT_MS = 1_500;
@@ -26,7 +27,7 @@ export type Journal = "JAMA" | "HR" | "JCE" | "CAH";
 export interface ScrapedArticle {
   title: string;
   link: string;
-  /** "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês, "YYYY" se apenas ano */
+  /** "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês, "YYYY" se apenas ano, "" se ausente */
   pubDate: string;
   description: string;
   doi: string;
@@ -117,6 +118,7 @@ export function isEditorialArticle(title: string): boolean {
  * Extrai a data de publicação de um item CrossRef.
  * Prioridade: published-online > published > created.
  * Retorna "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês, "YYYY" se apenas ano.
+ * Retorna "" se nenhum campo de data estiver presente no item.
  */
 export function extractPublicationDate(item: CrossRefItem): string {
   const dateParts =
@@ -125,7 +127,7 @@ export function extractPublicationDate(item: CrossRefItem): string {
     item["created"]?.["date-parts"]?.[0];
 
   if (!dateParts || dateParts[0] === undefined) {
-    return toLocalISODate(new Date());
+    return "";
   }
 
   const [year, month, day] = dateParts;
@@ -235,7 +237,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
 
   const url =
     `${CROSSREF_API}?filter=issn:${config.issn},${dateFilter}` +
-    `&sort=${sortField}&order=desc&rows=50` +
+    `&sort=${sortField}&order=desc&rows=${MAX_CROSSREF_ROWS}` +
     `&mailto=${encodeURIComponent(CONTACT_EMAIL)}`;
 
   console.log(`[scraper] ${config.journal}: buscando últimos ${config.windowDays} dias…`);
@@ -254,8 +256,12 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
   for (const item of items) {
     if (!item.title?.[0] || !item.DOI) continue;
 
-    // CrossRef às vezes inclui tags HTML nos títulos (<i>, <b>, <sub>…)
-    const title = item.title[0].replace(/<[^>]+>/g, "").trim();
+    // CrossRef inclui tags HTML (<i>, <b>, <sub>…) e entidades (&amp;, &#8220;…) em títulos
+    const title = item.title[0]
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&(?:[a-z]+|#\d+|#x[\da-f]+);/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
     // Filtro 1: descartar artigos editoriais/administrativos
     if (isEditorialArticle(title)) {

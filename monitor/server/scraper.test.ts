@@ -85,6 +85,10 @@ describe("extractPublicationDate", () => {
     const item = { published: { "date-parts": [[2026] as [number]] } };
     expect(extractPublicationDate(item)).toBe("2026");
   });
+
+  it("retorna string vazia quando item não tem nenhum campo de data", () => {
+    expect(extractPublicationDate({})).toBe("");
+  });
 });
 
 // ─── getCreatedDate ───────────────────────────────────────────────────────────

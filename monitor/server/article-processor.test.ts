@@ -151,7 +151,47 @@ describe("processArticles", () => {
 
     const callArgs = mockCreate.mock.calls[0]![0];
     expect(callArgs.tool_choice).toEqual({ type: "tool", name: "translate_article" });
-    expect(callArgs.model).toBe("claude-haiku-4-5-20251001");
     expect(callArgs.tools[0].name).toBe("translate_article");
+  });
+
+  it("inclui título e abstract do artigo no conteúdo enviado ao Claude", async () => {
+    const article = makeArticle(7);
+    mockCreate.mockResolvedValueOnce(successResponse("Título PT", "Resumo."));
+
+    await processArticles([article]);
+
+    const content: string = mockCreate.mock.calls[0]![0].messages[0].content;
+    expect(content).toContain(article.title);
+    expect(content).toContain(article.description);
+  });
+
+  it("usa fallback quando abstract está vazio — prompt inclui texto placeholder", async () => {
+    const article: ScrapedArticle = { ...makeArticle(1), description: "" };
+    mockCreate.mockResolvedValueOnce(successResponse("Título PT", "Resumo."));
+
+    await processArticles([article]);
+
+    const content: string = mockCreate.mock.calls[0]![0].messages[0].content;
+    expect(content).toContain("(sem abstract disponível)");
+  });
+
+  it("trata como falha quando Claude retorna campos ausentes no tool input", async () => {
+    // titlePt ausente no input — deve ir para fallback
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "tool_use", id: "tu_x", name: "translate_article", input: { summaryPt: "Resumo." } }],
+    });
+
+    const article = makeArticle(1);
+    const result = await processArticles([article]);
+
+    expect(result.failedDois).toEqual([article.doi]);
+    expect(result.articles[0]!.titlePt).toBe(article.title); // fallback
+  });
+
+  it("retorna lista vazia sem chamar Claude e sem exigir API key", async () => {
+    delete process.env["ANTHROPIC_API_KEY"];
+    const result = await processArticles([]);
+    expect(result).toEqual({ articles: [], failedDois: [], scrapeErrors: [] });
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal } from "./scraper.js";
+import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type ScrapedArticle } from "./scraper.js";
 import { processArticles } from "./article-processor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -67,7 +67,7 @@ app.get("/api/process", async (req, res) => {
   const journalParam = typeof raw === "string" ? raw.toUpperCase() : "ALL";
 
   try {
-    let articles;
+    let articles: ScrapedArticle[];
     let scrapeErrors: { journal: Journal; message: string }[] = [];
 
     if (journalParam === "ALL") {
@@ -90,10 +90,14 @@ app.get("/api/process", async (req, res) => {
       scrapeErrors: result.scrapeErrors,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "falha no processamento";
     console.error("[/api/process] erro:", err);
-    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 500;
-    res.status(status).json({ error: message });
+    const message = err instanceof Error ? err.message : "";
+    // Expõe apenas erro de configuração próprio — erros do SDK Anthropic são mascarados
+    if (message.includes("ANTHROPIC_API_KEY")) {
+      res.status(503).json({ error: message });
+    } else {
+      res.status(500).json({ error: "falha no processamento" });
+    }
   }
 });
 

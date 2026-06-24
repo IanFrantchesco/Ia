@@ -11,7 +11,7 @@ import type { ScrapedArticle, Journal } from "./scraper.js";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
+const CLAUDE_MODEL = process.env["CLAUDE_MODEL"] ?? "claude-haiku-4-5-20251001";
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 1_000;
 
@@ -62,13 +62,11 @@ async function translateArticle(
   client: Anthropic,
   article: ScrapedArticle
 ): Promise<ProcessedArticle> {
-  const userContent = [
-    "Traduza o título e resuma o abstract abaixo para português brasileiro.",
-    "O resumo deve ter no máximo 3 frases, direto e claro para cardiologistas.",
-    "",
-    `Título: ${article.title}`,
-    `Abstract: ${article.description || "(sem abstract disponível)"}`,
-  ].join("\n");
+  const userContent =
+    "Traduza o título e resuma o abstract abaixo para português brasileiro.\n" +
+    "O resumo deve ter no máximo 3 frases, direto e claro para cardiologistas.\n\n" +
+    `<title>${article.title}</title>\n` +
+    `<abstract>${article.description || "(sem abstract disponível)"}</abstract>`;
 
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
@@ -78,12 +76,21 @@ async function translateArticle(
     messages: [{ role: "user", content: userContent }],
   });
 
-  const toolBlock = response.content.find((b) => b.type === "tool_use");
+  const toolBlock = response.content.find(
+    (b) => b.type === "tool_use" && b.name === "translate_article"
+  );
   if (!toolBlock || toolBlock.type !== "tool_use") {
     throw new Error(`resposta inesperada do Claude — DOI ${article.doi}`);
   }
 
-  const { titlePt, summaryPt } = toolBlock.input as { titlePt: string; summaryPt: string };
+  const input = toolBlock.input as Record<string, unknown>;
+  const titlePt = typeof input["titlePt"] === "string" ? input["titlePt"] : null;
+  const summaryPt = typeof input["summaryPt"] === "string" ? input["summaryPt"] : null;
+
+  if (!titlePt || !summaryPt) {
+    throw new Error(`campos ausentes na resposta do Claude — DOI ${article.doi}`);
+  }
+
   return { ...article, titlePt, summaryPt };
 }
 
@@ -103,7 +110,7 @@ async function translateBatch(
     } else {
       const msg =
         outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
-      console.error(`[processor] tradução falhou — ${article.doi}: ${msg}`);
+      console.error(`[processor] tradução falhou — ${article.doi}: ${msg}`, outcome.reason);
       // fallback: artigo mantido com conteúdo em inglês
       results.push({ ...article, titlePt: article.title, summaryPt: article.description });
       failedDois.push(article.doi);
@@ -119,12 +126,12 @@ export async function processArticles(
   articles: ScrapedArticle[],
   scrapeErrors: { journal: Journal; message: string }[] = []
 ): Promise<ProcessResult> {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY não configurada");
-
   if (articles.length === 0) {
     return { articles: [], failedDois: [], scrapeErrors };
   }
+
+  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY não configurada");
 
   const client = new Anthropic({ apiKey });
 

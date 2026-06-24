@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type ScrapeResult } from "./scraper.js";
+import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal } from "./scraper.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
@@ -38,7 +38,7 @@ app.get("/api/scrape", async (req, res) => {
 
   try {
     if (journalParam === "ALL") {
-      const result: ScrapeResult = await scrapeAllArticles();
+      const result = await scrapeAllArticles();
       res.json({ count: result.articles.length, articles: result.articles, errors: result.errors });
       return;
     }
@@ -49,7 +49,7 @@ app.get("/api/scrape", async (req, res) => {
     }
 
     const articles = await scrapeJournal(journalParam as Journal);
-    res.json({ count: articles.length, articles, errors: [] });
+    res.json({ count: articles.length, articles });
   } catch (err) {
     console.error("[/api/scrape] erro:", err);
     res.status(500).json({ error: "falha na busca" });

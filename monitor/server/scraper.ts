@@ -176,14 +176,14 @@ export function buildArticleLink(journal: Journal, doi: string): string {
   return `https://doi.org/${doi}`;
 }
 
-// ─── HTTP ────────────────────────────────────────────────────────────────────
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 /** Formata Date como "YYYY-MM-DD" usando componentes locais — evita shift UTC do toISOString(). */
 function toLocalISODate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
+
+// ─── HTTP ────────────────────────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const FETCH_HEADERS = { "User-Agent": USER_AGENT, Accept: "application/json" } as const;
 
@@ -245,7 +245,12 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
   const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`CrossRef HTTP ${res.status} para ${config.journal}`);
 
-  const data = (await res.json()) as CrossRefResponse;
+  let data: CrossRefResponse;
+  try {
+    data = (await res.json()) as CrossRefResponse;
+  } catch {
+    throw new Error(`CrossRef resposta não-JSON para ${config.journal} (HTTP ${res.status})`);
+  }
   const items = data.message?.items ?? [];
 
   const createdCutoff = new Date();

@@ -3,6 +3,7 @@ import cors from "cors";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal } from "./scraper.js";
+import { processArticles } from "./article-processor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
@@ -53,6 +54,46 @@ app.get("/api/scrape", async (req, res) => {
   } catch (err) {
     console.error("[/api/scrape] erro:", err);
     res.status(500).json({ error: "falha na busca" });
+  }
+});
+
+/**
+ * GET /api/process?journal=ALL|JAMA|HR|JCE|CAH
+ * Busca artigos do CrossRef e traduz/resume com Claude em PT-BR.
+ * Requer ANTHROPIC_API_KEY configurada.
+ */
+app.get("/api/process", async (req, res) => {
+  const raw = req.query["journal"];
+  const journalParam = typeof raw === "string" ? raw.toUpperCase() : "ALL";
+
+  try {
+    let articles;
+    let scrapeErrors: { journal: Journal; message: string }[] = [];
+
+    if (journalParam === "ALL") {
+      const scraped = await scrapeAllArticles();
+      articles = scraped.articles;
+      scrapeErrors = scraped.errors;
+    } else {
+      if (!VALID_JOURNALS.has(journalParam as Journal)) {
+        res.status(400).json({ error: `journal inválido: ${journalParam}` });
+        return;
+      }
+      articles = await scrapeJournal(journalParam as Journal);
+    }
+
+    const result = await processArticles(articles, scrapeErrors);
+    res.json({
+      count: result.articles.length,
+      articles: result.articles,
+      failedDois: result.failedDois,
+      scrapeErrors: result.scrapeErrors,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "falha no processamento";
+    console.error("[/api/process] erro:", err);
+    const status = message.includes("ANTHROPIC_API_KEY") ? 503 : 500;
+    res.status(status).json({ error: message });
   }
 });
 

@@ -25,7 +25,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
-const VALID_JOURNALS = new Set(Object.keys(JOURNAL_CONFIGS) as Journal[]);
+const VALID_JOURNALS = new Set(Object.values(JOURNAL_CONFIGS).map((c) => c.journal));
 
 /**
  * GET /api/scrape?journal=ALL|JAMA|HR|JCE|CAH

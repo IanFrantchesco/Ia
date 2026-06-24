@@ -99,8 +99,11 @@ describe("getCreatedDate", () => {
     expect(date!.getDate()).toBe(13);
   });
 
-  it("retorna null quando created ausente", () => {
+  it("retorna null quando created ausente — deve ser tratado como descarte pelo filtro de idade", () => {
     expect(getCreatedDate({})).toBeNull();
+    // null significa "sem data confiável" → artigo descartado (não incluído), tanto para HR quanto não-HR
+    const itemSemMes = { created: { "date-parts": [[2026] as [number]] } };
+    expect(getCreatedDate(itemSemMes)).toBeNull();
   });
 
   it("retorna null quando date-parts malformado", () => {

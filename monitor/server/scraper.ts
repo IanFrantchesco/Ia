@@ -71,13 +71,19 @@ export interface JournalConfig {
   useCreatedDate: boolean;
   /** Artigos com "created" mais antigo que isso são descartados */
   maxCreatedAgeDays: number;
+  /**
+   * Ajuste em dias aplicado ao campo "created" para obter a data de publicação real.
+   * HR = -1: a Elsevier deposita no CrossRef 1 dia após a publicação online.
+   * 0 para todos os demais.
+   */
+  pubDateOffsetDays: number;
 }
 
 export const JOURNAL_CONFIGS: Record<Journal, JournalConfig> = {
-  JAMA: { issn: "2380-6583", journal: "JAMA", delayMs: 0,    windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30 },
-  HR:   { issn: "1547-5271", journal: "HR",   delayMs: 1500, windowDays: 7, useCreatedDate: true,  maxCreatedAgeDays: 7  },
-  JCE:  { issn: "1045-3873", journal: "JCE",  delayMs: 4500, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30 },
-  CAH:  { issn: "0009-7322", journal: "CAH",  delayMs: 6000, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30 },
+  JAMA: { issn: "2380-6583", journal: "JAMA", delayMs: 0,    windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
+  HR:   { issn: "1547-5271", journal: "HR",   delayMs: 1500, windowDays: 7, useCreatedDate: true,  maxCreatedAgeDays: 7,  pubDateOffsetDays: -1 },
+  JCE:  { issn: "1045-3873", journal: "JCE",  delayMs: 4500, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
+  CAH:  { issn: "0009-7322", journal: "CAH",  delayMs: 6000, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
 };
 
 // ─── Padrões editoriais/administrativos ──────────────────────────────────────
@@ -177,19 +183,21 @@ function toLocalISODate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-async function fetchWithRetry(url: string): Promise<Response> {
-  const headers = { "User-Agent": USER_AGENT, Accept: "application/json" };
+const FETCH_HEADERS = { "User-Agent": USER_AGENT, Accept: "application/json" } as const;
 
+async function fetchWithRetry(url: string): Promise<Response> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
-        headers,
+        headers: FETCH_HEADERS,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (res.status === 429) {
-        console.warn(`[scraper] rate limited — aguardando ${RATE_LIMIT_WAIT_MS * attempt}ms`);
-        await sleep(RATE_LIMIT_WAIT_MS * attempt);
+        if (attempt < MAX_RETRIES) {
+          console.warn(`[scraper] rate limited — aguardando ${RATE_LIMIT_WAIT_MS * attempt}ms`);
+          await sleep(RATE_LIMIT_WAIT_MS * attempt);
+        }
         continue;
       }
 
@@ -257,40 +265,28 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
 
     const createdDate = getCreatedDate(item);
 
-    if (config.journal === "HR") {
-      // Filtro HR: a Elsevier deposita 1 dia depois da publicação online.
-      // Usamos created−1 como data real. Descartamos se created > maxCreatedAgeDays (7).
-      if (!createdDate || createdDate < createdCutoff) {
-        if (createdDate) {
-          console.log(`[scraper] ${config.journal}: created antigo (${toLocalISODate(createdDate)}) — descartado`);
-        }
-        continue;
+    // Filtro 2: sem "created" ou mais antigo que maxCreatedAgeDays → descartado
+    if (!createdDate || createdDate < createdCutoff) {
+      if (createdDate) {
+        console.log(`[scraper] ${config.journal}: created antigo (${toLocalISODate(createdDate)}) — descartado`);
       }
-
-      const pubDate = new Date(createdDate);
-      pubDate.setDate(pubDate.getDate() - 1);
-
-      articles.push({
-        title,
-        link: buildArticleLink(config.journal, item.DOI),
-        pubDate: toLocalISODate(pubDate),
-        description: cleanAbstract(item.abstract),
-        doi: item.DOI,
-        journal: config.journal,
-      });
       continue;
     }
 
-    // Filtro 2: artigos com "created" mais antigo que maxCreatedAgeDays → descartados
-    if (createdDate && createdDate < createdCutoff) {
-      console.log(`[scraper] ${config.journal}: created antigo (${toLocalISODate(createdDate)}) — descartado`);
-      continue;
+    // pubDate: periódicos com pubDateOffsetDays != 0 ajustam o campo created (ex: HR = −1 dia)
+    let pubDate: string;
+    if (config.pubDateOffsetDays !== 0) {
+      const adjusted = new Date(createdDate);
+      adjusted.setDate(adjusted.getDate() + config.pubDateOffsetDays);
+      pubDate = toLocalISODate(adjusted);
+    } else {
+      pubDate = extractPublicationDate(item);
     }
 
     articles.push({
       title,
       link: buildArticleLink(config.journal, item.DOI),
-      pubDate: extractPublicationDate(item),
+      pubDate,
       description: cleanAbstract(item.abstract),
       doi: item.DOI,
       journal: config.journal,
@@ -298,7 +294,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
   }
 
   const limited = articles.slice(0, MAX_PER_JOURNAL);
-  console.log(`[scraper] ${config.journal}: ${limited.length} artigos (${articles.length} após filtros)`);
+  console.log(`[scraper] ${config.journal}: ${articles.length} após filtros → ${limited.length} retornados`);
   return limited;
 }
 
@@ -313,16 +309,14 @@ export interface ScrapeResult {
 export async function scrapeAllArticles(): Promise<ScrapeResult> {
   console.log(`[scraper] iniciando busca — ${new Date().toISOString()}`);
 
-  const settled = await Promise.allSettled(
-    Object.values(JOURNAL_CONFIGS).map((cfg) => queryByISSN(cfg))
-  );
+  const cfgs = Object.values(JOURNAL_CONFIGS);
+  const settled = await Promise.allSettled(cfgs.map((cfg) => queryByISSN(cfg)));
 
   const articles: ScrapedArticle[] = [];
   const errors: ScrapeResult["errors"] = [];
-  const journals = Object.values(JOURNAL_CONFIGS);
 
   settled.forEach((result, i) => {
-    const journal = journals[i]!.journal;
+    const journal = cfgs[i]!.journal;
     if (result.status === "fulfilled") {
       articles.push(...result.value);
     } else {

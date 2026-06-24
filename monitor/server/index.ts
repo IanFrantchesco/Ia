@@ -4,8 +4,10 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT ?? 3000);
 const isProd = process.env.NODE_ENV === "production";
+
+const rawPort = process.env.PORT ? Number(process.env.PORT) : 3000;
+const PORT = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3000;
 
 const app = express();
 
@@ -21,10 +23,10 @@ app.get("/api/health", (_req, res) => {
 });
 
 if (isProd) {
-  // Em produção: dist/ está 2 níveis acima de dist/server/
+  // __dirname em produção = dist/server/ → dois níveis acima = monitor/
   const clientDist = resolve(__dirname, "../../dist/client");
   app.use(express.static(clientDist));
-  // Catch-all para SPA — qualquer rota não-API devolve o index.html
+  // Catch-all SPA: rotas não-API devolvem index.html
   app.use((_req, res) => res.sendFile(resolve(clientDist, "index.html")));
 }
 

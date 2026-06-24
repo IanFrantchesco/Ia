@@ -26,7 +26,7 @@ export type Journal = "JAMA" | "HR" | "JCE" | "CAH";
 export interface ScrapedArticle {
   title: string;
   link: string;
-  /** "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês */
+  /** "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês, "YYYY" se apenas ano */
   pubDate: string;
   description: string;
   doi: string;
@@ -57,7 +57,7 @@ interface CrossRefResponse {
 
 // ─── Configuração por periódico ───────────────────────────────────────────────
 
-interface JournalConfig {
+export interface JournalConfig {
   issn: string;
   journal: Journal;
   /** Delay antes do request — evita burst simultâneo nos 4 periódicos */
@@ -73,7 +73,7 @@ interface JournalConfig {
   maxCreatedAgeDays: number;
 }
 
-const JOURNAL_CONFIGS: Record<Journal, JournalConfig> = {
+export const JOURNAL_CONFIGS: Record<Journal, JournalConfig> = {
   JAMA: { issn: "2380-6583", journal: "JAMA", delayMs: 0,    windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30 },
   HR:   { issn: "1547-5271", journal: "HR",   delayMs: 1500, windowDays: 7, useCreatedDate: true,  maxCreatedAgeDays: 7  },
   JCE:  { issn: "1045-3873", journal: "JCE",  delayMs: 4500, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30 },
@@ -110,7 +110,7 @@ export function isEditorialArticle(title: string): boolean {
 /**
  * Extrai a data de publicação de um item CrossRef.
  * Prioridade: published-online > published > created.
- * Retorna "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês.
+ * Retorna "YYYY-MM-DD" se dia disponível, "YYYY-MM" se apenas mês, "YYYY" se apenas ano.
  */
 export function extractPublicationDate(item: CrossRefItem): string {
   const dateParts =
@@ -119,7 +119,7 @@ export function extractPublicationDate(item: CrossRefItem): string {
     item["created"]?.["date-parts"]?.[0];
 
   if (!dateParts || dateParts[0] === undefined) {
-    return new Date().toISOString().slice(0, 10);
+    return toLocalISODate(new Date());
   }
 
   const [year, month, day] = dateParts;
@@ -151,7 +151,7 @@ export function cleanAbstract(abstract?: string): string {
   if (!abstract) return "";
   return abstract
     .replace(/<[^>]+>/g, " ")
-    .replace(/&[a-z]+;/gi, " ")
+    .replace(/&(?:[a-z]+|#\d+|#x[\da-f]+);/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -172,6 +172,11 @@ export function buildArticleLink(journal: Journal, doi: string): string {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** Formata Date como "YYYY-MM-DD" usando componentes locais — evita shift UTC do toISOString(). */
+function toLocalISODate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 async function fetchWithRetry(url: string): Promise<Response> {
   const headers = { "User-Agent": USER_AGENT, Accept: "application/json" };
 
@@ -185,6 +190,13 @@ async function fetchWithRetry(url: string): Promise<Response> {
       if (res.status === 429) {
         console.warn(`[scraper] rate limited — aguardando ${RATE_LIMIT_WAIT_MS * attempt}ms`);
         await sleep(RATE_LIMIT_WAIT_MS * attempt);
+        continue;
+      }
+
+      // Erros 5xx são transientes — retentar com backoff (4xx não são, retornar imediatamente)
+      if (res.status >= 500 && attempt < MAX_RETRIES) {
+        console.warn(`[scraper] HTTP ${res.status} — retry ${attempt}/${MAX_RETRIES}`);
+        await sleep(RETRY_BASE_WAIT_MS * attempt);
         continue;
       }
 
@@ -205,7 +217,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
 
   const fromDate = new Date();
   fromDate.setDate(fromDate.getDate() - config.windowDays);
-  const fromDateStr = fromDate.toISOString().slice(0, 10);
+  const fromDateStr = toLocalISODate(fromDate);
 
   const dateFilter = config.useCreatedDate
     ? `from-created-date:${fromDateStr}`
@@ -216,7 +228,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
   const url =
     `${CROSSREF_API}?filter=issn:${config.issn},${dateFilter}` +
     `&sort=${sortField}&order=desc&rows=50` +
-    `&mailto=${CONTACT_EMAIL}`;
+    `&mailto=${encodeURIComponent(CONTACT_EMAIL)}`;
 
   console.log(`[scraper] ${config.journal}: buscando últimos ${config.windowDays} dias…`);
 
@@ -250,7 +262,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
       // Usamos created−1 como data real. Descartamos se created > maxCreatedAgeDays (7).
       if (!createdDate || createdDate < createdCutoff) {
         if (createdDate) {
-          console.log(`[scraper] ${config.journal}: created antigo (${createdDate.toISOString().slice(0, 10)}) — descartado`);
+          console.log(`[scraper] ${config.journal}: created antigo (${toLocalISODate(createdDate)}) — descartado`);
         }
         continue;
       }
@@ -261,7 +273,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
       articles.push({
         title,
         link: buildArticleLink(config.journal, item.DOI),
-        pubDate: pubDate.toISOString().slice(0, 10),
+        pubDate: toLocalISODate(pubDate),
         description: cleanAbstract(item.abstract),
         doi: item.DOI,
         journal: config.journal,
@@ -271,7 +283,7 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
 
     // Filtro 2: artigos com "created" mais antigo que maxCreatedAgeDays → descartados
     if (createdDate && createdDate < createdCutoff) {
-      console.log(`[scraper] ${config.journal}: created antigo (${createdDate.toISOString().slice(0, 10)}) — descartado`);
+      console.log(`[scraper] ${config.journal}: created antigo (${toLocalISODate(createdDate)}) — descartado`);
       continue;
     }
 
@@ -292,21 +304,36 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
 
 // ─── Exports públicos ─────────────────────────────────────────────────────────
 
-export async function scrapeAllArticles(): Promise<ScrapedArticle[]> {
+export interface ScrapeResult {
+  articles: ScrapedArticle[];
+  /** Periódicos que falharam durante a busca (rede, API indisponível, etc.) */
+  errors: { journal: Journal; message: string }[];
+}
+
+export async function scrapeAllArticles(): Promise<ScrapeResult> {
   console.log(`[scraper] iniciando busca — ${new Date().toISOString()}`);
 
-  const results = await Promise.all(
-    Object.values(JOURNAL_CONFIGS).map((cfg) =>
-      queryByISSN(cfg).catch((err: unknown) => {
-        console.error(`[scraper] ${cfg.journal}: erro —`, err);
-        return [] as ScrapedArticle[];
-      })
-    )
+  const settled = await Promise.allSettled(
+    Object.values(JOURNAL_CONFIGS).map((cfg) => queryByISSN(cfg))
   );
 
-  const all = results.flat();
-  console.log(`[scraper] total: ${all.length} artigos`);
-  return all;
+  const articles: ScrapedArticle[] = [];
+  const errors: ScrapeResult["errors"] = [];
+  const journals = Object.values(JOURNAL_CONFIGS);
+
+  settled.forEach((result, i) => {
+    const journal = journals[i]!.journal;
+    if (result.status === "fulfilled") {
+      articles.push(...result.value);
+    } else {
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.error(`[scraper] ${journal}: erro — ${message}`);
+      errors.push({ journal, message });
+    }
+  });
+
+  console.log(`[scraper] total: ${articles.length} artigos, ${errors.length} falhas`);
+  return { articles, errors };
 }
 
 export async function scrapeJournal(journal: Journal): Promise<ScrapedArticle[]> {

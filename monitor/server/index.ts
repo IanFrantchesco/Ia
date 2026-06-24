@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { scrapeAllArticles, scrapeJournal, type Journal } from "./scraper.js";
+import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type ScrapeResult } from "./scraper.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
@@ -25,7 +25,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
-const VALID_JOURNALS = new Set<Journal>(["JAMA", "HR", "JCE", "CAH"]);
+const VALID_JOURNALS = new Set(Object.keys(JOURNAL_CONFIGS) as Journal[]);
 
 /**
  * GET /api/scrape?journal=ALL|JAMA|HR|JCE|CAH
@@ -33,22 +33,23 @@ const VALID_JOURNALS = new Set<Journal>(["JAMA", "HR", "JCE", "CAH"]);
  * Sem cache, sem banco — resultado bruto para validação.
  */
 app.get("/api/scrape", async (req, res) => {
-  const journalParam = (req.query["journal"] as string | undefined)?.toUpperCase() ?? "ALL";
+  const raw = req.query["journal"];
+  const journalParam = typeof raw === "string" ? raw.toUpperCase() : "ALL";
 
   try {
-    const articles =
-      journalParam === "ALL"
-        ? await scrapeAllArticles()
-        : VALID_JOURNALS.has(journalParam as Journal)
-        ? await scrapeJournal(journalParam as Journal)
-        : null;
+    if (journalParam === "ALL") {
+      const result: ScrapeResult = await scrapeAllArticles();
+      res.json({ count: result.articles.length, articles: result.articles, errors: result.errors });
+      return;
+    }
 
-    if (articles === null) {
+    if (!VALID_JOURNALS.has(journalParam as Journal)) {
       res.status(400).json({ error: `journal inválido: ${journalParam}` });
       return;
     }
 
-    res.json({ count: articles.length, articles });
+    const articles = await scrapeJournal(journalParam as Journal);
+    res.json({ count: articles.length, articles, errors: [] });
   } catch (err) {
     console.error("[/api/scrape] erro:", err);
     res.status(500).json({ error: "falha na busca" });

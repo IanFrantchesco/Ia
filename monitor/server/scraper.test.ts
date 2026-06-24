@@ -80,6 +80,11 @@ describe("extractPublicationDate", () => {
     const item = { "published-online": { "date-parts": [[2026, 1, 9] as [number, number, number]] } };
     expect(extractPublicationDate(item)).toBe("2026-01-09");
   });
+
+  it("retorna YYYY quando apenas ano disponível", () => {
+    const item = { published: { "date-parts": [[2026] as [number]] } };
+    expect(extractPublicationDate(item)).toBe("2026");
+  });
 });
 
 // ─── getCreatedDate ───────────────────────────────────────────────────────────
@@ -143,10 +148,16 @@ describe("cleanAbstract", () => {
     expect(cleanAbstract(raw)).toBe("This is a test abstract.");
   });
 
-  it("remove entidades HTML comuns", () => {
-    // &amp; vira espaço; o texto entre &lt;...&gt; é preservado pois não é tag real
+  it("remove entidades HTML nomeadas", () => {
     expect(cleanAbstract("Heart &amp; Vessels")).toBe("Heart Vessels");
     expect(cleanAbstract("Study A &amp; Study B")).toBe("Study A Study B");
+  });
+
+  it("remove entidades HTML numéricas decimais e hexadecimais", () => {
+    // &#8212; = em dash, &#x03B1; = alpha grego — frequentes em abstracts científicos
+    expect(cleanAbstract("H&#8322;O")).toBe("H O");
+    expect(cleanAbstract("&#x03B1;-blocker")).toBe("-blocker");
+    expect(cleanAbstract("Study&#8212;Results")).toBe("Study Results");
   });
 
   it("normaliza múltiplos espaços", () => {

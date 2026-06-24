@@ -9,23 +9,25 @@ const isProd = process.env.NODE_ENV === "production";
 
 const app = express();
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+// CORS apenas em desenvolvimento — em produção o frontend é servido pelo Express
+if (!isProd) {
+  app.use(cors({ origin: "http://localhost:5173" }));
+}
+
 app.use(express.json());
 
-// Health check — valida que o servidor está de pé
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
-// Em produção serve os assets do Vite build
 if (isProd) {
+  // Em produção: dist/ está 2 níveis acima de dist/server/
   const clientDist = resolve(__dirname, "../../dist/client");
   app.use(express.static(clientDist));
-  app.get("*", (_req, res) =>
-    res.sendFile(resolve(clientDist, "index.html"))
-  );
+  // Catch-all para SPA — qualquer rota não-API devolve o index.html
+  app.use((_req, res) => res.sendFile(resolve(clientDist, "index.html")));
 }
 
 app.listen(PORT, () => {
-  console.log(`[server] rodando em http://localhost:${PORT}`);
+  console.log(`[server] http://localhost:${PORT}`);
 });

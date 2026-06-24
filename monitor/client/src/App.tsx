@@ -1,21 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
 
 export default function App() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["health"],
-    queryFn: () => fetch("/api/health").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/health");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{ ok: boolean; ts: string }>;
+    },
   });
 
+  const status = isLoading
+    ? "Verificando servidor..."
+    : isError
+    ? "Servidor indisponível"
+    : `Servidor OK — ${data?.ts}`;
+
   return (
-    <main style={{ padding: "2rem" }}>
-      <h1>Monitor de Artigos Cardiológicos</h1>
-      <p style={{ marginTop: "1rem", color: "var(--muted-foreground)" }}>
-        {isLoading
-          ? "Verificando servidor..."
-          : data?.ok
-          ? `Servidor OK — ${data.ts}`
-          : "Servidor indisponível"}
-      </p>
+    <main className="p-8">
+      <h1 className="text-4xl font-bold">Monitor de Artigos Cardiológicos</h1>
+      <p className="mt-4 text-[var(--muted-foreground)]">{status}</p>
     </main>
   );
 }

@@ -3,11 +3,14 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "outDir": "dist/server",
+    "outDir": "dist",
     "rootDir": ".",
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
   },
   "include": ["server", "shared", "drizzle"],
   "exclude": ["node_modules", "dist", "client"]

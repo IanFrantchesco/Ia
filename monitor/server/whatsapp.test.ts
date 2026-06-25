@@ -5,9 +5,11 @@ import type { ArticleMessage } from "./whatsapp.js";
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const makeArticle = (n: number, journal: "JAMA" | "HR" | "JCE" | "CAH" = "JAMA"): ArticleMessage => ({
+  doi: `10.1234/test.${n}`,
   titlePt: `Artigo ${n} Título`,
   summaryPt: `Resumo do artigo ${n}.`,
   link: `https://doi.org/10.1234/test.${n}`,
+  pubDate: "2026-06-25",
   journal,
 });
 
@@ -19,38 +21,29 @@ const FIXED_DATE = new Date("2026-06-25T12:00:00");
 describe("generateWhatsappMessage", () => {
   it("retorna mensagem de 'nenhum artigo' para array vazio", () => {
     const msg = generateWhatsappMessage([], FIXED_DATE);
-    expect(msg).toContain("*CardioNews");
+    expect(msg).toContain("*Olá, Doutor(a)!*");
     expect(msg).toContain("Nenhum artigo novo no período consultado.");
   });
 
-  it("inclui a data formatada em PT-BR no cabeçalho", () => {
+  it("inclui a data de atualização formatada em PT-BR no rodapé", () => {
     const msg = generateWhatsappMessage([], FIXED_DATE);
-    // Deve conter dia 25 e ano 2026
     expect(msg).toMatch(/25/);
+    expect(msg).toMatch(/junho/);
     expect(msg).toMatch(/2026/);
   });
 
-  it("formata artigo único com título em negrito, resumo e link", () => {
+  it("formata artigo único com título em negrito, data, resumo, DOI e link", () => {
     const msg = generateWhatsappMessage([makeArticle(1)], FIXED_DATE);
     expect(msg).toContain("*Artigo 1 Título*");
+    expect(msg).toContain("📅");
     expect(msg).toContain("Resumo do artigo 1.");
-    expect(msg).toContain("https://doi.org/10.1234/test.1");
+    expect(msg).toContain("DOI: 10.1234/test.1");
+    expect(msg).toContain("🔗 https://doi.org/10.1234/test.1");
   });
 
-  it("exibe nome completo do periódico no cabeçalho da seção", () => {
+  it("exibe nome completo do periódico no cabeçalho da seção com emoji 📰", () => {
     const msg = generateWhatsappMessage([makeArticle(1, "HR")], FIXED_DATE);
-    expect(msg).toContain("*Heart Rhythm*");
-  });
-
-  it("usa 'artigo' (singular) para exatamente 1 artigo na seção", () => {
-    const msg = generateWhatsappMessage([makeArticle(1)], FIXED_DATE);
-    expect(msg).toContain("(1 artigo)");
-    expect(msg).not.toContain("(1 artigos)");
-  });
-
-  it("usa 'artigos' (plural) para 2 ou mais artigos na seção", () => {
-    const msg = generateWhatsappMessage([makeArticle(1), makeArticle(2)], FIXED_DATE);
-    expect(msg).toContain("(2 artigos)");
+    expect(msg).toContain("📰 *Heart Rhythm*");
   });
 
   it("agrupa e ordena seções em JAMA > HR > JCE > CAH independente da ordem de entrada", () => {
@@ -67,7 +60,7 @@ describe("generateWhatsappMessage", () => {
     expect(pos("J. Cardiovasc.")).toBeLessThan(pos("Circulation"));
   });
 
-  it("numera artigos dentro de cada seção começando em 1", () => {
+  it("numera artigos continuamente dentro da mesma seção", () => {
     const articles = [makeArticle(1), makeArticle(2), makeArticle(3)];
     const msg = generateWhatsappMessage(articles, FIXED_DATE);
     expect(msg).toContain("1. *Artigo 1 Título*");
@@ -75,11 +68,14 @@ describe("generateWhatsappMessage", () => {
     expect(msg).toContain("3. *Artigo 3 Título*");
   });
 
-  it("reinicia numeração em 1 para cada novo periódico", () => {
+  it("numera artigos continuamente entre periódicos diferentes (sem reiniciar)", () => {
     const articles = [makeArticle(1, "JAMA"), makeArticle(2, "HR")];
     const msg = generateWhatsappMessage(articles, FIXED_DATE);
+    expect(msg).toContain("1. *Artigo 1 Título*");
+    expect(msg).toContain("2. *Artigo 2 Título*");
+    // O contador não reinicia — deve haver apenas uma ocorrência de "1. "
     const matches = [...msg.matchAll(/^1\. /gm)];
-    expect(matches).toHaveLength(2);
+    expect(matches).toHaveLength(1);
   });
 
   it("omite seções de periódicos sem artigos", () => {
@@ -91,10 +87,12 @@ describe("generateWhatsappMessage", () => {
 
   it("usa 'title' como fallback quando titlePt está vazio", () => {
     const article: ArticleMessage = {
+      doi: "10.1234/test.0",
       title: "English Title",
       titlePt: "",
       summaryPt: "Resumo.",
       link: "https://doi.org/10.1234/test.0",
+      pubDate: "2026-06-25",
       journal: "JAMA",
     };
     const msg = generateWhatsappMessage([article], FIXED_DATE);
@@ -103,9 +101,11 @@ describe("generateWhatsappMessage", () => {
 
   it("usa '(sem título)' quando title e titlePt estão vazios", () => {
     const article: ArticleMessage = {
+      doi: "10.1234/test.0",
       titlePt: "",
       summaryPt: "Resumo.",
       link: "https://doi.org/10.1234/test.0",
+      pubDate: "2026-06-25",
       journal: "JAMA",
     };
     const msg = generateWhatsappMessage([article], FIXED_DATE);
@@ -121,7 +121,6 @@ describe("generateWhatsappMessage", () => {
   it("múltiplos artigos do mesmo journal ficam em sequência na mesma seção", () => {
     const articles = [makeArticle(1, "JCE"), makeArticle(2, "JCE"), makeArticle(3, "JAMA")];
     const msg = generateWhatsappMessage(articles, FIXED_DATE);
-    // As duas entradas de JCE devem aparecer entre o cabeçalho JCE e o próximo periódico
     const jcePos = msg.indexOf("J. Cardiovasc.");
     const art1Pos = msg.indexOf("Artigo 1 Título");
     const art2Pos = msg.indexOf("Artigo 2 Título");

@@ -7,26 +7,47 @@ export { JOURNAL_LABELS };
 
 /** Subconjunto mínimo necessário para formatar a mensagem — aceita ProcessedArticle ou ArticleRow. */
 export interface ArticleMessage {
+  doi: string;
   title?: string;
   titlePt: string;
   summaryPt: string;
   link: string;
+  pubDate: string;
   journal: Journal;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-/** Ordem canônica dos periódicos — importada de shared para garantia de unicidade. */
 const JOURNAL_ORDER = JOURNALS;
+
+const DIVIDER = "━━━━━━━━━━━━━━━━━━━━";
+
+const INSTAGRAM_LINK =
+  "https://www.instagram.com/arritmia.update?igsh=bWJpa2JnbzN0c3Iy&utm_source=qr";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", {
-    weekday: "short",
     day: "numeric",
-    month: "short",
+    month: "long",
     year: "numeric",
+  });
+}
+
+function formatPubDate(pubDate: string): string {
+  const parts = pubDate.split("-");
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if (!year || !month || !day) return pubDate;
+  // noon UTC evita off-by-one causado por diferenças de fuso
+  const d = new Date(Date.UTC(year, month - 1, day, 12));
+  return d.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -34,16 +55,27 @@ function formatDate(date: Date): string {
 
 /**
  * Gera mensagem formatada para WhatsApp com os artigos agrupados por periódico.
- * Usa markdown do WhatsApp: *negrito* e numeração por seção.
+ * Usa markdown do WhatsApp: *negrito*, separadores ━ e emojis.
+ * Numeração é contínua entre todos os periódicos.
  */
 export function generateWhatsappMessage(
   articles: ArticleMessage[],
   date: Date = new Date()
 ): string {
-  const header = `*CardioNews — ${formatDate(date)}*`;
+  const lines: string[] = [
+    "*Olá, Doutor(a)!*",
+    "",
+    "Seguem as atualizações dessa semana, selecionadas diretamente das edições mais recentes dos principais periódicos internacionais de cardiologia. Esperamos que sejam úteis para a sua prática clínica.",
+    "",
+    "*Arritmia Update*",
+    INSTAGRAM_LINK,
+  ];
 
   if (articles.length === 0) {
-    return `${header}\n\nNenhum artigo novo no período consultado.`;
+    lines.push("", "Nenhum artigo novo no período consultado.");
+    lines.push("", DIVIDER);
+    lines.push(`📆 Atualização: ${formatDate(date)}.`);
+    return lines.join("\n");
   }
 
   // Agrupa preservando a ordem canônica; ignora journals sem artigos
@@ -53,28 +85,29 @@ export function generateWhatsappMessage(
     if (group.length > 0) byJournal.set(journal, group);
   }
 
-  const sections: string[] = [header, ""];
+  let counter = 1;
 
   for (const [journal, group] of byJournal) {
-    const noun = group.length === 1 ? "artigo" : "artigos";
-    sections.push(`*${JOURNAL_LABELS[journal]}* (${group.length} ${noun})`);
-    sections.push("");
+    lines.push("");
+    lines.push(DIVIDER);
+    lines.push(`📰 *${JOURNAL_LABELS[journal]}*`);
+    lines.push(DIVIDER);
 
-    group.forEach((article, i) => {
+    for (const article of group) {
       const displayTitle = article.titlePt || article.title || "(sem título)";
-      sections.push(`${i + 1}. *${displayTitle}*`);
-      sections.push(article.summaryPt);
-      sections.push(article.link);
-      if (i < group.length - 1) sections.push("");
-    });
-
-    sections.push("");
+      lines.push("");
+      lines.push(`${counter}. *${displayTitle}*`);
+      if (article.pubDate) lines.push(`📅 ${formatPubDate(article.pubDate)}`);
+      lines.push(article.summaryPt);
+      lines.push(`DOI: ${article.doi}`);
+      lines.push(`🔗 ${article.link}`);
+      counter++;
+    }
   }
 
-  // Remove linha em branco final
-  while (sections.length > 0 && sections[sections.length - 1] === "") {
-    sections.pop();
-  }
+  lines.push("");
+  lines.push(DIVIDER);
+  lines.push(`📆 Atualização: ${formatDate(date)}.`);
 
-  return sections.join("\n");
+  return lines.join("\n");
 }

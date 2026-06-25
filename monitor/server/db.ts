@@ -32,6 +32,7 @@ export function initDb(database: Db = db, migrationsFolder: string = MIGRATIONS_
 /** Cria uma conexão in-memory isolada para testes. */
 export function createTestDb(): Db {
   const sqlite = new Database(":memory:");
+  sqlite.pragma("foreign_keys = ON");
   const testDb = drizzle(sqlite, { schema });
   migrate(testDb, { migrationsFolder: MIGRATIONS_PATH });
   return testDb;

@@ -8,7 +8,7 @@ import { db as defaultDb, type Db } from "./db.js";
 import { articles } from "./schema.js";
 import type { ArticleRow } from "./schema.js";
 import type { ProcessedArticle } from "./article-processor.js";
-import type { Journal } from "./scraper.js";
+import type { Journal } from "../shared/journals.js";
 
 export type { ArticleRow };
 

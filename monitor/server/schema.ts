@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
-import type { Journal } from "./scraper.js";
+import type { Journal } from "../shared/journals.js";
 
 export const articles = sqliteTable(
   "articles",

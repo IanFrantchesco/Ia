@@ -4,6 +4,7 @@ import type { Journal } from "./scraper.js";
 
 /** Subconjunto mínimo necessário para formatar a mensagem — aceita ProcessedArticle ou ArticleRow. */
 export interface ArticleMessage {
+  title?: string;
   titlePt: string;
   summaryPt: string;
   link: string;
@@ -19,8 +20,8 @@ export const JOURNAL_LABELS: Record<Journal, string> = {
   CAH:  "Circulation",
 };
 
-/** Ordem canônica dos periódicos na mensagem. */
-const JOURNAL_ORDER: Journal[] = ["JAMA", "HR", "JCE", "CAH"];
+/** Ordem canônica dos periódicos na mensagem — derivada de JOURNAL_LABELS para garantir cobertura total. */
+const JOURNAL_ORDER = Object.keys(JOURNAL_LABELS) as Journal[];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export function generateWhatsappMessage(
   const header = `*CardioNews — ${formatDate(date)}*`;
 
   if (articles.length === 0) {
-    return `${header}\n\nNenhum artigo novo esta semana.`;
+    return `${header}\n\nNenhum artigo novo no período consultado.`;
   }
 
   // Agrupa preservando a ordem canônica; ignora journals sem artigos
@@ -64,7 +65,8 @@ export function generateWhatsappMessage(
     sections.push("");
 
     group.forEach((article, i) => {
-      sections.push(`${i + 1}. *${article.titlePt}*`);
+      const displayTitle = article.titlePt || article.title || "(sem título)";
+      sections.push(`${i + 1}. *${displayTitle}*`);
       sections.push(article.summaryPt);
       sections.push(article.link);
       if (i < group.length - 1) sections.push("");

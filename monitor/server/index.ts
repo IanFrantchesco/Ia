@@ -30,6 +30,14 @@ if (!isProd) {
 
 app.use(express.json());
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseDays(raw: unknown, defaultDays: number): number {
+  return typeof raw === "string" && Number.isFinite(Number(raw)) && Number(raw) > 0
+    ? Number(raw)
+    : defaultDays;
+}
+
 // ─── Rotas ────────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => {
@@ -125,10 +133,7 @@ app.get("/api/articles", (req, res) => {
   const rawDays = req.query["days"];
 
   const journalParam = typeof rawJournal === "string" ? rawJournal.toUpperCase() : "ALL";
-  const days =
-    typeof rawDays === "string" && Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
-      ? Number(rawDays)
-      : 30;
+  const days = parseDays(rawDays, 30);
 
   if (journalParam !== "ALL" && !VALID_JOURNALS.has(journalParam as Journal)) {
     res.status(400).json({ error: `journal inválido: ${journalParam}` });
@@ -152,15 +157,12 @@ app.get("/api/articles", (req, res) => {
  * Retorna mensagem formatada para WhatsApp com os artigos do banco dos últimos N dias.
  */
 app.get("/api/whatsapp", (req, res) => {
-  const rawDays = req.query["days"];
-  const days =
-    typeof rawDays === "string" && Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
-      ? Number(rawDays)
-      : 7;
+  const days = parseDays(req.query["days"], 7);
 
   try {
+    const now = new Date();
     const rows = getArticles({ days });
-    const message = generateWhatsappMessage(rows, new Date());
+    const message = generateWhatsappMessage(rows, now);
     res.json({ count: rows.length, message });
   } catch (err) {
     console.error("[/api/whatsapp] erro:", err);

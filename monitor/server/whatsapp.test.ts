@@ -20,7 +20,7 @@ describe("generateWhatsappMessage", () => {
   it("retorna mensagem de 'nenhum artigo' para array vazio", () => {
     const msg = generateWhatsappMessage([], FIXED_DATE);
     expect(msg).toContain("*CardioNews");
-    expect(msg).toContain("Nenhum artigo novo esta semana.");
+    expect(msg).toContain("Nenhum artigo novo no período consultado.");
   });
 
   it("inclui a data formatada em PT-BR no cabeçalho", () => {
@@ -87,6 +87,29 @@ describe("generateWhatsappMessage", () => {
     expect(msg).not.toContain("Heart Rhythm");
     expect(msg).not.toContain("J. Cardiovasc.");
     expect(msg).not.toContain("Circulation");
+  });
+
+  it("usa 'title' como fallback quando titlePt está vazio", () => {
+    const article: ArticleMessage = {
+      title: "English Title",
+      titlePt: "",
+      summaryPt: "Resumo.",
+      link: "https://doi.org/10.1234/test.0",
+      journal: "JAMA",
+    };
+    const msg = generateWhatsappMessage([article], FIXED_DATE);
+    expect(msg).toContain("*English Title*");
+  });
+
+  it("usa '(sem título)' quando title e titlePt estão vazios", () => {
+    const article: ArticleMessage = {
+      titlePt: "",
+      summaryPt: "Resumo.",
+      link: "https://doi.org/10.1234/test.0",
+      journal: "JAMA",
+    };
+    const msg = generateWhatsappMessage([article], FIXED_DATE);
+    expect(msg).toContain("*(sem título)*");
   });
 
   it("não termina com linha em branco", () => {

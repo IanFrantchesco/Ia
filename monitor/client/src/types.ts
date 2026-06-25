@@ -1,4 +1,5 @@
-export type Journal = "JAMA" | "HR" | "JCE" | "CAH";
+import type { Journal } from "@shared/journals";
+export type { Journal };
 
 export interface Article {
   doi: string;

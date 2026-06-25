@@ -33,9 +33,8 @@ app.use(express.json());
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseDays(raw: unknown, defaultDays: number): number {
-  return typeof raw === "string" && Number.isFinite(Number(raw)) && Number(raw) > 0
-    ? Number(raw)
-    : defaultDays;
+  const n = Number(raw);
+  return typeof raw === "string" && Number.isFinite(n) && n > 0 ? n : defaultDays;
 }
 
 // ─── Rotas ────────────────────────────────────────────────────────────────────

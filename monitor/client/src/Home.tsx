@@ -1,17 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Journal, Article, ArticlesResponse, ProcessResponse, WhatsAppResponse } from "@/types";
+import { JOURNAL_LABELS, JOURNALS } from "@shared/journals";
+import type { Article, ArticlesResponse, ProcessResponse, WhatsAppResponse } from "@/types";
+import type { Journal } from "@shared/journals";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-
-const JOURNALS: Journal[] = ["JAMA", "HR", "JCE", "CAH"];
-
-const JOURNAL_LABELS: Record<Journal, string> = {
-  JAMA: "JAMA Cardiology",
-  HR: "Heart Rhythm",
-  JCE: "J. Cardiovasc. Electrophysiol.",
-  CAH: "Circulation",
-};
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 type DaysOption = (typeof DAYS_OPTIONS)[number];
@@ -37,6 +30,7 @@ export default function Home() {
   const [days, setDays] = useState<DaysOption>(7);
   const [showWpp, setShowWpp] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Artigos do banco
   const articlesQuery = useQuery({
@@ -78,10 +72,16 @@ export default function Home() {
   });
 
   function handleCopy() {
-    navigator.clipboard.writeText(wppQuery.data?.message ?? "").then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    const msg = wppQuery.data?.message;
+    if (!msg) return;
+    navigator.clipboard.writeText(msg).then(
+      () => {
+        setCopied(true);
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      },
+      () => { /* permissão negada ou contexto não seguro — sem feedback visual */ }
+    );
   }
 
   const db = processMutation.data?.db;
@@ -221,7 +221,7 @@ export default function Home() {
             <div className="flex justify-end mb-3">
               <button
                 onClick={handleCopy}
-                disabled={!wppQuery.data}
+                disabled={!wppQuery.data || wppQuery.isFetching}
                 className="text-xs px-3 py-1"
                 style={{
                   border: "1px solid var(--border)",
@@ -234,13 +234,13 @@ export default function Home() {
                 {copied ? "✓ Copiado" : "Copiar"}
               </button>
             </div>
-            {wppQuery.isLoading && (
+            {(wppQuery.isLoading || wppQuery.isFetching) && (
               <p style={{ color: "var(--muted-foreground)" }}>Gerando mensagem…</p>
             )}
             {wppQuery.isError && (
               <p style={{ color: "var(--destructive)" }}>Erro ao gerar mensagem.</p>
             )}
-            {wppQuery.data && (
+            {wppQuery.data && !wppQuery.isFetching && (
               <pre className="text-sm leading-relaxed whitespace-pre-wrap font-mono m-0">
                 {wppQuery.data.message}
               </pre>

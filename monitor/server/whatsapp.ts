@@ -1,4 +1,7 @@
-import type { Journal } from "./scraper.js";
+import { JOURNAL_LABELS, JOURNALS } from "../shared/journals.js";
+import type { Journal } from "../shared/journals.js";
+
+export { JOURNAL_LABELS };
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -13,15 +16,8 @@ export interface ArticleMessage {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-export const JOURNAL_LABELS: Record<Journal, string> = {
-  JAMA: "JAMA Cardiology",
-  HR:   "Heart Rhythm",
-  JCE:  "J. Cardiovasc. Electrophysiol.",
-  CAH:  "Circulation",
-};
-
-/** Ordem canônica dos periódicos na mensagem — derivada de JOURNAL_LABELS para garantir cobertura total. */
-const JOURNAL_ORDER = Object.keys(JOURNAL_LABELS) as Journal[];
+/** Ordem canônica dos periódicos — importada de shared para garantia de unicidade. */
+const JOURNAL_ORDER = JOURNALS;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

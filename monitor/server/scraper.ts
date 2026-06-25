@@ -8,6 +8,9 @@
  *      HR: usa created−1 dia como data de publicação (Elsevier deposita 1 dia depois)
  */
 
+import type { Journal } from "../shared/journals.js";
+export type { Journal };
+
 // ─── Constantes ─────────────────────────────────────────────────────────────
 
 const CROSSREF_API = "https://api.crossref.org/works";
@@ -21,8 +24,6 @@ const RETRY_BASE_WAIT_MS = 1_500;
 const RATE_LIMIT_WAIT_MS = 3_000;
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
-
-export type Journal = "JAMA" | "HR" | "JCE" | "CAH";
 
 export interface ScrapedArticle {
   title: string;

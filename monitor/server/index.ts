@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { resolve, dirname } from "path";
+import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type ScrapedArticle } from "./scraper.js";
 import { processArticles } from "./article-processor.js";
@@ -9,7 +10,11 @@ import { upsertArticles, getArticles } from "./repository.js";
 import { generateWhatsappMessage } from "./whatsapp.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const isProd = process.env.NODE_ENV === "production";
+// __dirname em produção = dist/server/ → dois níveis acima = monitor/
+// Serve o frontend quando os assets compilados existem (não depende de NODE_ENV,
+// que no Railway faz o npm install pular as devDependencies necessárias ao build).
+const clientDist = resolve(__dirname, "../../dist/client");
+const serveStatic = existsSync(clientDist);
 
 try {
   initDb();
@@ -24,7 +29,7 @@ const PORT = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3000;
 const app = express();
 
 // CORS apenas em desenvolvimento — em produção o frontend é servido pelo Express
-if (!isProd) {
+if (!serveStatic) {
   app.use(cors({ origin: "http://localhost:5173" }));
 }
 
@@ -171,9 +176,7 @@ app.get("/api/whatsapp", (req, res) => {
 
 // ─── Produção: serve assets do Vite ──────────────────────────────────────────
 
-if (isProd) {
-  // __dirname em produção = dist/server/ → dois níveis acima = monitor/
-  const clientDist = resolve(__dirname, "../../dist/client");
+if (serveStatic) {
   app.use(express.static(clientDist));
   // Catch-all SPA: rotas não-API devolvem index.html
   app.use((_req, res) => res.sendFile(resolve(clientDist, "index.html")));

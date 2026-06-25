@@ -54,6 +54,25 @@ O build compila o servidor TypeScript para `dist/server/`, copia as migrations p
 
 Acesse `http://localhost:3000`.
 
+## Deploy no Railway
+
+1. Crie conta em [railway.app](https://railway.app) e conecte ao GitHub
+2. **New Project → Deploy from GitHub repo** → selecione `IanFrantchesco/Ia`
+3. Em **Settings → Root Directory**, defina: `monitor`
+4. Em **Settings → Volumes**, crie um volume em `/data` para persistir o banco SQLite entre deploys
+5. Em **Variables**, adicione:
+
+| Variável | Valor |
+|----------|-------|
+| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| `CONTACT_EMAIL` | seu email |
+| `DB_PATH` | `/data/cardio.db` |
+
+6. Railway detecta o `railway.toml` e faz o build automaticamente
+7. Acesse a URL gerada pelo Railway de qualquer dispositivo
+
+> O volume `/data` é necessário para que os artigos salvos não sejam perdidos a cada novo deploy.
+
 ## Testes
 
 ```bash

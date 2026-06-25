@@ -6,7 +6,7 @@
 import { eq, desc, gte, and } from "drizzle-orm";
 import { db as defaultDb, type Db } from "./db.js";
 import { articles } from "./schema.js";
-import type { ArticleRow, InsertArticleRow } from "./schema.js";
+import type { ArticleRow } from "./schema.js";
 import type { ProcessedArticle } from "./article-processor.js";
 import type { Journal } from "./scraper.js";
 
@@ -22,25 +22,21 @@ export function upsertArticles(
   processed: ProcessedArticle[],
   database: Db = defaultDb
 ): { inserted: number; skipped: number } {
+  if (processed.length === 0) return { inserted: 0, skipped: 0 };
+
   const now = new Date();
-  let inserted = 0;
-
-  for (const article of processed) {
-    const row: InsertArticleRow = {
-      doi: article.doi,
-      title: article.title,
-      titlePt: article.titlePt,
-      description: article.description,
-      summaryPt: article.summaryPt,
-      link: article.link,
-      pubDate: article.pubDate,
-      journal: article.journal,
-      createdAt: now,
-    };
-
-    const result = database.insert(articles).values(row).onConflictDoNothing().run();
-    if (result.changes > 0) inserted++;
-  }
+  const inserted = database.transaction((tx) => {
+    let count = 0;
+    for (const article of processed) {
+      const result = tx
+        .insert(articles)
+        .values({ ...article, createdAt: now })
+        .onConflictDoNothing()
+        .run();
+      if (result.changes > 0) count++;
+    }
+    return count;
+  });
 
   return { inserted, skipped: processed.length - inserted };
 }
@@ -69,7 +65,7 @@ export function getArticles(
   return database
     .select()
     .from(articles)
-    .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+    .where(and(...conditions))
     .orderBy(desc(articles.createdAt))
     .all();
 }

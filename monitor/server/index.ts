@@ -10,7 +10,12 @@ import { upsertArticles, getArticles } from "./repository.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
 
-initDb();
+try {
+  initDb();
+} catch (err) {
+  console.error("[db] falha ao aplicar migrações:", err);
+  process.exit(1);
+}
 
 const rawPort = process.env.PORT ? Number(process.env.PORT) : 3000;
 const PORT = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3000;
@@ -119,7 +124,10 @@ app.get("/api/articles", (req, res) => {
   const rawDays = req.query["days"];
 
   const journalParam = typeof rawJournal === "string" ? rawJournal.toUpperCase() : "ALL";
-  const days = typeof rawDays === "string" && Number.isFinite(Number(rawDays)) ? Number(rawDays) : 30;
+  const days =
+    typeof rawDays === "string" && Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
+      ? Number(rawDays)
+      : 30;
 
   if (journalParam !== "ALL" && !VALID_JOURNALS.has(journalParam as Journal)) {
     res.status(400).json({ error: `journal inválido: ${journalParam}` });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDb } from "./db.js";
 import { upsertArticles, getArticles, getArticleByDoi } from "./repository.js";
 import { articles } from "./schema.js";
@@ -25,6 +25,10 @@ describe("upsertArticles", () => {
 
   beforeEach(() => {
     testDb = createTestDb();
+  });
+
+  afterEach(() => {
+    testDb.$client.close();
   });
 
   it("insere artigos novos e reporta contagem correta", () => {
@@ -67,6 +71,10 @@ describe("getArticles", () => {
     upsertArticles([makeProcessed(1, "JAMA"), makeProcessed(2, "HR"), makeProcessed(3, "JAMA")], testDb);
   });
 
+  afterEach(() => {
+    testDb.$client.close();
+  });
+
   it("retorna todos os artigos sem filtros", () => {
     const rows = getArticles({}, testDb);
     expect(rows).toHaveLength(3);
@@ -105,6 +113,7 @@ describe("getArticles", () => {
   it("retorna lista vazia quando não há artigos no período", () => {
     const emptyDb = createTestDb();
     const rows = getArticles({ days: 1 }, emptyDb);
+    emptyDb.$client.close();
     expect(rows).toHaveLength(0);
   });
 });
@@ -117,6 +126,10 @@ describe("getArticleByDoi", () => {
   beforeEach(() => {
     testDb = createTestDb();
     upsertArticles([makeProcessed(1)], testDb);
+  });
+
+  afterEach(() => {
+    testDb.$client.close();
   });
 
   it("retorna o artigo pelo DOI exato", () => {

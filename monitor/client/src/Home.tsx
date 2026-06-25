@@ -34,7 +34,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 export default function Home() {
   const queryClient = useQueryClient();
   const [journal, setJournal] = useState<Journal | "ALL">("ALL");
-  const [days, setDays] = useState<DaysOption>(30);
+  const [days, setDays] = useState<DaysOption>(7);
   const [showWpp, setShowWpp] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -63,6 +63,7 @@ export default function Home() {
       return apiFetch<ProcessResponse>(`/api/process?${params}`);
     },
     onSuccess: () => {
+      setDays(7);
       queryClient.invalidateQueries({ queryKey: ["articles"] });
       queryClient.invalidateQueries({ queryKey: ["whatsapp"] });
     },

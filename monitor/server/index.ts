@@ -6,6 +6,7 @@ import { scrapeAllArticles, scrapeJournal, JOURNAL_CONFIGS, type Journal, type S
 import { processArticles } from "./article-processor.js";
 import { initDb } from "./db.js";
 import { upsertArticles, getArticles } from "./repository.js";
+import { generateWhatsappMessage } from "./whatsapp.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProd = process.env.NODE_ENV === "production";
@@ -143,6 +144,27 @@ app.get("/api/articles", (req, res) => {
   } catch (err) {
     console.error("[/api/articles] erro:", err);
     res.status(500).json({ error: "falha ao consultar artigos" });
+  }
+});
+
+/**
+ * GET /api/whatsapp?days=7
+ * Retorna mensagem formatada para WhatsApp com os artigos do banco dos últimos N dias.
+ */
+app.get("/api/whatsapp", (req, res) => {
+  const rawDays = req.query["days"];
+  const days =
+    typeof rawDays === "string" && Number.isFinite(Number(rawDays)) && Number(rawDays) > 0
+      ? Number(rawDays)
+      : 7;
+
+  try {
+    const rows = getArticles({ days });
+    const message = generateWhatsappMessage(rows, new Date());
+    res.json({ count: rows.length, message });
+  } catch (err) {
+    console.error("[/api/whatsapp] erro:", err);
+    res.status(500).json({ error: "falha ao gerar mensagem" });
   }
 });
 

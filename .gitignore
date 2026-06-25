@@ -11,3 +11,4 @@ database/_trat_*.py
 # Monitor de artigos — dependências e build
 monitor/node_modules/
 monitor/dist/
+monitor/.env

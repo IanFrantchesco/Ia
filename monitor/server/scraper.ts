@@ -67,23 +67,25 @@ export interface JournalConfig {
   /** Janela de busca em dias (from-pub-date ou from-created-date) */
   windowDays: number;
   /**
-   * HR usa from-created-date: a Elsevier deposita no CrossRef 1 dia após
-   * a publicação online, então created−1 = data real de disponibilidade.
+   * HR não expõe data de publicação com dia no CrossRef (o campo "published"
+   * traz apenas ano-mês). Por isso usa-se o campo "created" (depósito), que para
+   * a Elsevier coincide com o dia de disponibilização online — confirmado contra
+   * o site oficial do Heart Rhythm ("Articles in Press, <data>").
    */
   useCreatedDate: boolean;
   /** Artigos com "created" mais antigo que isso são descartados */
   maxCreatedAgeDays: number;
   /**
-   * Ajuste em dias aplicado ao campo "created" para obter a data de publicação real.
-   * HR = -1: a Elsevier deposita no CrossRef 1 dia após a publicação online.
-   * 0 para todos os demais.
+   * Ajuste em dias aplicado ao campo "created" quando useCreatedDate=true.
+   * Mantido em 0: a data de depósito da Elsevier já corresponde ao dia de
+   * publicação online (qualquer offset desalinha a data exibida).
    */
   pubDateOffsetDays: number;
 }
 
 export const JOURNAL_CONFIGS: Record<Journal, JournalConfig> = {
   JAMA: { issn: "2380-6583", journal: "JAMA", delayMs: 0,    windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
-  HR:   { issn: "1547-5271", journal: "HR",   delayMs: 1500, windowDays: 7, useCreatedDate: true,  maxCreatedAgeDays: 7,  pubDateOffsetDays: -1 },
+  HR:   { issn: "1547-5271", journal: "HR",   delayMs: 1500, windowDays: 7, useCreatedDate: true,  maxCreatedAgeDays: 7,  pubDateOffsetDays: 0  },
   JCE:  { issn: "1045-3873", journal: "JCE",  delayMs: 4500, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
   CAH:  { issn: "0009-7322", journal: "CAH",  delayMs: 6000, windowDays: 7, useCreatedDate: false, maxCreatedAgeDays: 30, pubDateOffsetDays: 0  },
 };
@@ -285,9 +287,10 @@ async function queryByISSN(config: JournalConfig): Promise<ScrapedArticle[]> {
       continue;
     }
 
-    // pubDate: periódicos com pubDateOffsetDays != 0 ajustam o campo created (ex: HR = −1 dia)
+    // pubDate: HR (useCreatedDate) usa o dia do depósito; demais usam a data de publicação.
+    // O offset só se aplica ao caminho do "created" e hoje é 0 para todos.
     let pubDate: string;
-    if (config.pubDateOffsetDays !== 0) {
+    if (config.useCreatedDate) {
       const adjusted = new Date(createdDate);
       adjusted.setDate(adjusted.getDate() + config.pubDateOffsetDays);
       pubDate = toLocalISODate(adjusted);

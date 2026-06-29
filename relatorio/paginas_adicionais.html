@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório Monitor Fisiologia — Páginas Adicionais</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #e8edf2;
+  }
+
+  .page {
+    width: 1270px;
+    min-height: 720px;
+    background: white;
+    margin: 40px auto;
+    display: flex;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.15);
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  /* ─── CORES ─── */
+  :root {
+    --navy: #0d2137;
+    --navy-mid: #163049;
+    --teal: #2bbfb0;
+    --teal-light: #d4f3ef;
+    --blue-mid: #2a6fa8;
+    --blue-light: #ddeaf8;
+    --gray-bg: #f4f6f9;
+    --gray-text: #6b7a8d;
+    --text: #0d2137;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--navy);
+    display: flex;
+    flex-direction: column;
+    padding: 48px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sidebar::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: -60px;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    border: 2px solid rgba(43,191,176,0.15);
+  }
+  .sidebar::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; right: -80px;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    border: 2px solid rgba(43,191,176,0.10);
+  }
+
+  .sidebar-tag {
+    background: rgba(43,191,176,0.15);
+    color: var(--teal);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 32px;
+    width: fit-content;
+  }
+
+  .sidebar-title {
+    color: white;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.3;
+    margin-bottom: 20px;
+  }
+
+  .sidebar-subtitle {
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+
+  .sidebar-stat {
+    margin-top: auto;
+    background: rgba(43,191,176,0.12);
+    border: 1px solid rgba(43,191,176,0.25);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .sidebar-stat-num {
+    color: var(--teal);
+    font-size: 42px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .sidebar-stat-label {
+    color: rgba(255,255,255,0.65);
+    font-size: 12px;
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* ─── CONTENT AREA ─── */
+  .content {
+    flex: 1;
+    padding: 48px 44px;
+    background: var(--gray-bg);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gray-text);
+    margin-bottom: 24px;
+  }
+
+  /* ─── CARDS GRID ─── */
+  .cards-grid {
+    display: grid;
+    gap: 16px;
+  }
+
+  .cards-grid-2 { grid-template-columns: 1fr 1fr; }
+  .cards-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .card-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray-text);
+    margin-bottom: 10px;
+  }
+
+  .card-number {
+    font-size: 44px;
+    font-weight: 900;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--gray-text);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .badge {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-teal { background: var(--teal-light); color: #1a8a80; }
+  .badge-blue { background: var(--blue-light); color: var(--blue-mid); }
+
+  /* ─── BAR CHART ─── */
+  .chart-card {
+    background: white;
+    border-radius: 14px;
+    padding: 24px;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .chart-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+
+  .chart-subtitle {
+    font-size: 11px;
+    color: var(--gray-text);
+    margin-bottom: 20px;
+  }
+
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 100px;
+  }
+
+  .bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .bar-value {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .bar-fill {
+    width: 100%;
+    border-radius: 5px 5px 0 0;
+    background: var(--blue-light);
+    transition: height 0.3s;
+  }
+
+  .bar-fill.highlight { background: var(--navy); }
+  .bar-fill.teal { background: var(--teal); }
+
+  .bar-day {
+    font-size: 9px;
+    color: var(--gray-text);
+    white-space: nowrap;
+  }
+
+  /* ─── HORA CHART ─── */
+  .hour-grid {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 12px;
+  }
+
+  .hour-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .hour-block {
+    width: 100%;
+    border-radius: 3px;
+    background: #e2eaf4;
+  }
+
+  .hour-block.low    { background: #b8d1eb; }
+  .hour-block.mid    { background: var(--blue-mid); }
+  .hour-block.high   { background: var(--navy); }
+  .hour-block.peak   { background: var(--teal); }
+
+  .hour-label {
+    font-size: 7px;
+    color: var(--gray-text);
+  }
+
+  /* ─── INSIGHT BOX ─── */
+  .insight {
+    background: var(--navy);
+    color: white;
+    border-radius: 14px;
+    padding: 20px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .insight-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .insight-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.85);
+  }
+
+  .insight-text strong {
+    color: var(--teal);
+  }
+
+  /* ─── TOPIC CHIPS ─── */
+  .topic-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .topic-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .chip-1 { background: #0d2137; color: white; font-size: 13px; padding: 8px 18px; }
+  .chip-2 { background: #163049; color: white; font-size: 12px; padding: 7px 16px; }
+  .chip-3 { background: #1e4570; color: white; }
+  .chip-4 { background: var(--blue-light); color: var(--blue-mid); }
+  .chip-5 { background: var(--teal-light); color: #1a8a80; }
+
+  /* ─── COMPLEXITY BAR ─── */
+  .complexity-row {
+    margin-bottom: 14px;
+  }
+
+  .complexity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .complexity-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .complexity-pct {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-text);
+  }
+
+  .complexity-bar-bg {
+    height: 10px;
+    background: #e8edf2;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .complexity-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+  }
+
+  /* ─── TURNO VISUAL ─── */
+  .turno-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .turno-item {
+    flex: 1;
+    background: white;
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .turno-pct {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--navy);
+  }
+
+  .turno-pct.teal { color: var(--teal); }
+
+  .turno-name {
+    font-size: 10px;
+    color: var(--gray-text);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    border: none;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    margin: 20px 0;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     PÁGINA 1 — QUANDO OS ALUNOS BUSCAM CONHECIMENTO
+════════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <span class="sidebar-tag">Padrão de Uso</span>
+    <div class="sidebar-title">Quando os Alunos Buscam Conhecimento</div>
+    <div class="sidebar-subtitle">
+      A análise dos horários e dias de acesso revela que os alunos utilizam o monitor no momento exato em que a dúvida surge — evidência de aprendizado ativo e contínuo.
+    </div>
+
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">69%</div>
+      <div class="sidebar-stat-label">das interações ocorrem à tarde ou à noite — horário pós-aula, de consolidação da memória</div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <!-- TURNO BREAKDOWN -->
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-title">Distribuição por Turno</div>
+      <div class="chart-subtitle">Total acumulado no período — Abril a Junho de 2026</div>
+      <div class="turno-row">
+        <div class="turno-item">
+          <div class="turno-pct">27%</div>
+          <div class="turno-name">Manhã<br>6h – 12h</div>
+        </div>
+        <div class="turno-item">
+          <div class="turno-pct">35%</div>
+          <div class="turno-name">Tarde<br>12h – 18h</div>
+        </div>
+        <div class="turno-item" style="background:var(--navy); border-color:var(--navy);">
+          <div class="turno-pct" style="color:var(--teal);">34%</div>
+          <div class="turno-name" style="color:rgba(255,255,255,0.65);">Noite<br>18h – 24h</div>
+        </div>
+        <div class="turno-item">
+          <div class="turno-pct teal">4%</div>
+          <div class="turno-name">Madrugada<br>0h – 6h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOUR CHART + DAY CHART -->
+    <div class="cards-grid cards-grid-2" style="margin-bottom:16px;">
+
+      <!-- HEATMAP DE HORAS -->
+      <div class="chart-card">
+        <div class="chart-title">Mapa de Calor — Hora do Dia</div>
+        <div class="chart-subtitle">Concentração de interações por hora</div>
+        <div class="hour-grid">
+          <!-- 0h-5h: baixo / 6h-11h: médio / 17h-19h: pico / resto: mid -->
+          <div class="hour-cell"><div class="hour-block low"  style="height:18px"></div><div class="hour-label">0h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:12px"></div><div class="hour-label">1h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:5px"></div><div class="hour-label">2h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:8px"></div><div class="hour-label">3h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:0px"></div><div class="hour-label">4h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:5px"></div><div class="hour-label">5h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:18px"></div><div class="hour-label">6h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:32px"></div><div class="hour-label">7h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:52px"></div><div class="hour-label">8h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:60px"></div><div class="hour-label">9h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:40px"></div><div class="hour-label">10h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:44px"></div><div class="hour-label">11h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:50px"></div><div class="hour-label">12h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:38px"></div><div class="hour-label">13h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:55px"></div><div class="hour-label">14h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:44px"></div><div class="hour-label">15h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:46px"></div><div class="hour-label">16h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:74px"></div><div class="hour-label">17h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:80px"></div><div class="hour-label">18h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:82px"></div><div class="hour-label">19h</div></div>
+          <div class="hour-cell"><div class="hour-block high" style="height:66px"></div><div class="hour-label">20h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:25px"></div><div class="hour-label">21h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:25px"></div><div class="hour-label">22h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:27px"></div><div class="hour-label">23h</div></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--teal);display:inline-block;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Pico: 17h–19h</span>
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--navy);display:inline-block;margin-left:8px;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Alto</span>
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--blue-mid);display:inline-block;margin-left:8px;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Moderado</span>
+        </div>
+      </div>
+
+      <!-- BAR CHART DIAS -->
+      <div class="chart-card">
+        <div class="chart-title">Interações por Dia da Semana</div>
+        <div class="chart-subtitle">Quarta concentra <strong style="color:var(--navy);">36%</strong> de todas as interações</div>
+        <div class="bar-chart">
+          <div class="bar-item">
+            <div class="bar-value">29</div>
+            <div class="bar-fill" style="height:33%"></div>
+            <div class="bar-day">Seg</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">45</div>
+            <div class="bar-fill" style="height:51%"></div>
+            <div class="bar-day">Ter</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">131</div>
+            <div class="bar-fill highlight" style="height:100%"></div>
+            <div class="bar-day" style="color:var(--navy);font-weight:700;">Qua</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">60</div>
+            <div class="bar-fill" style="height:46%"></div>
+            <div class="bar-day">Qui</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">19</div>
+            <div class="bar-fill" style="height:14%"></div>
+            <div class="bar-day">Sex</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">36</div>
+            <div class="bar-fill teal" style="height:27%"></div>
+            <div class="bar-day">Sáb</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">48</div>
+            <div class="bar-fill teal" style="height:37%"></div>
+            <div class="bar-day">Dom</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <span class="badge badge-blue">77% em dias úteis</span>
+          <span class="badge badge-teal">23% no fim de semana</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSIGHT BOX -->
+    <div class="insight">
+      <div class="insight-icon">💡</div>
+      <div class="insight-text">
+        O pico às <strong>17h–19h</strong> e a dominância das <strong>quartas-feiras</strong> indicam que o monitor está integrado à rotina curricular — os alunos consultam logo após as aulas, aproveitando o momento ideal de fixação do conteúdo. Os <strong>84 acessos nos fins de semana</strong> e os <strong>15 na madrugada</strong> confirmam que a disponibilidade 24/7 atende uma demanda real que a monitoria tradicional não consegue cobrir.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     PÁGINA 2 — A QUALIDADE DO APRENDIZADO
+════════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <span class="sidebar-tag">Qualidade Pedagógica</span>
+    <div class="sidebar-title">A Profundidade do Aprendizado</div>
+    <div class="sidebar-subtitle">
+      Além do volume, os dados revelam que os alunos estão formulando perguntas elaboradas, cobrindo múltiplos sistemas fisiológicos e consolidando o uso do monitor como ferramenta de estudo permanente.
+    </div>
+
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">521%</div>
+      <div class="sidebar-stat-label">de crescimento em interações da Semana 1 até o pico — a ferramenta ganhou cada vez mais confiança ao longo do semestre</div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <div class="cards-grid cards-grid-2" style="margin-bottom:16px;">
+
+      <!-- COMPLEXIDADE DAS PERGUNTAS -->
+      <div class="chart-card">
+        <div class="chart-title">Complexidade das Perguntas</div>
+        <div class="chart-subtitle">Distribuição por profundidade de formulação</div>
+
+        <div class="complexity-row" style="margin-top:16px;">
+          <div class="complexity-header">
+            <span class="complexity-name">Perguntas elaboradas (20–100 chars)</span>
+            <span class="complexity-pct">67%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:67%;background:var(--navy);"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Dúvidas formuladas com contexto real — o aluno raciocina antes de perguntar</div>
+        </div>
+
+        <div class="complexity-row">
+          <div class="complexity-header">
+            <span class="complexity-name">Perguntas aprofundadas (&gt;100 chars)</span>
+            <span class="complexity-pct">14%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:14%;background:var(--teal);"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Cenário clínico ou mecanismo descrito — nível de raciocínio avançado</div>
+        </div>
+
+        <div class="complexity-row">
+          <div class="complexity-header">
+            <span class="complexity-name">Consultas rápidas (&lt;20 chars)</span>
+            <span class="complexity-pct">19%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:19%;background:var(--blue-light);"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Busca direta por conceito — uso ágil como dicionário de fisiologia</div>
+        </div>
+
+        <hr class="divider">
+        <div style="display:flex;justify-content:space-between;">
+          <span class="badge badge-teal">81% com contexto ou elaboração</span>
+          <span style="font-size:11px;color:var(--gray-text);align-self:center;">média: 59 chars/pergunta</span>
+        </div>
+      </div>
+
+      <!-- CURVA DE CRESCIMENTO -->
+      <div class="chart-card">
+        <div class="chart-title">Crescimento de Interações por Semana</div>
+        <div class="chart-subtitle">A adoção acelera conforme o semestre avança</div>
+        <div class="bar-chart" style="height:110px;">
+          <div class="bar-item">
+            <div class="bar-value">14</div>
+            <div class="bar-fill" style="height:16%;background:#b8d1eb;"></div>
+            <div class="bar-day">S1</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">18</div>
+            <div class="bar-fill" style="height:21%;background:#9abfe0;"></div>
+            <div class="bar-day">S2</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">14</div>
+            <div class="bar-fill" style="height:16%;background:#9abfe0;"></div>
+            <div class="bar-day">S3</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">72</div>
+            <div class="bar-fill" style="height:83%;background:var(--blue-mid);"></div>
+            <div class="bar-day">S4</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">61</div>
+            <div class="bar-fill" style="height:70%;background:var(--blue-mid);"></div>
+            <div class="bar-day">S5</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">23</div>
+            <div class="bar-fill" style="height:26%;background:#7aafd0;"></div>
+            <div class="bar-day">S6</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">37</div>
+            <div class="bar-fill" style="height:43%;background:var(--blue-mid);"></div>
+            <div class="bar-day">S7</div>
+          </div>
+          <div class="bar-item">
+            <div class="bar-value">87</div>
+            <div class="bar-fill" style="height:100%;background:var(--teal);"></div>
+            <div class="bar-day" style="font-weight:700;color:var(--teal);">S8 ↑</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <span class="badge badge-teal">Semana 8 = maior semana do semestre</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEMAS COBERTOS -->
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-title">Cobertura Curricular — Temas Abordados pelos Alunos</div>
+      <div class="chart-subtitle">Diversidade de sistemas fisiológicos consultados ao longo do semestre</div>
+      <div class="topic-grid">
+        <span class="topic-chip chip-1">Fisiologia Cardiovascular</span>
+        <span class="topic-chip chip-1">Fisiologia Renal</span>
+        <span class="topic-chip chip-2">Sistema Nervoso</span>
+        <span class="topic-chip chip-2">Fisiologia Geral</span>
+        <span class="topic-chip chip-3">Neurociência</span>
+        <span class="topic-chip chip-3">Anatomia</span>
+        <span class="topic-chip chip-3">Endocrinologia</span>
+        <span class="topic-chip chip-4">Farmacologia</span>
+        <span class="topic-chip chip-4">Metabolismo</span>
+        <span class="topic-chip chip-4">Imunologia</span>
+        <span class="topic-chip chip-5">Fisiologia Hepática</span>
+        <span class="topic-chip chip-5">Fisiologia Celular</span>
+        <span class="topic-chip chip-5">Fisiologia do Sono</span>
+        <span class="topic-chip chip-5">Fisiologia Reprodutiva</span>
+        <span class="topic-chip chip-5">Sistema Renina-Angiotensina</span>
+      </div>
+    </div>
+
+    <!-- INSIGHT BOX -->
+    <div class="insight">
+      <div class="insight-icon">📈</div>
+      <div class="insight-text">
+        A <strong>semana 8 foi a de maior atividade de todo o semestre</strong> (87 interações) — o oposto do que ocorre com ferramentas abandonadas com o tempo. <strong>81% das perguntas foram formuladas com contexto ou elaboração</strong>, revelando alunos que pensam antes de perguntar. A cobertura de <strong>mais de 12 sistemas fisiológicos diferentes</strong> mostra que o monitor acompanhou os alunos por todo o programa curricular da disciplina.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

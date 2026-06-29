@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório Executivo — Monitor de Fisiologia · UNIFENAS 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #dde3ea;
+  }
+
+  :root {
+    --navy:      #0d2137;
+    --navy-mid:  #163049;
+    --teal:      #2bbfb0;
+    --teal-light:#d4f3ef;
+    --blue-mid:  #2a6fa8;
+    --blue-light:#ddeaf8;
+    --gray-bg:   #f4f6f9;
+    --gray-text: #6b7a8d;
+    --text:      #0d2137;
+  }
+
+  /* ── PAGE ── */
+  .page {
+    width: 1270px;
+    min-height: 720px;
+    background: white;
+    margin: 48px auto;
+    display: flex;
+    box-shadow: 0 10px 48px rgba(0,0,0,0.18);
+    overflow: hidden;
+    border-radius: 6px;
+    page-break-after: always;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 290px;
+    min-width: 290px;
+    background: var(--navy);
+    display: flex;
+    flex-direction: column;
+    padding: 52px 34px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sidebar::before {
+    content:'';position:absolute;top:-70px;left:-70px;
+    width:260px;height:260px;border-radius:50%;
+    border:2px solid rgba(43,191,176,0.13);
+  }
+  .sidebar::after {
+    content:'';position:absolute;bottom:-90px;right:-90px;
+    width:320px;height:320px;border-radius:50%;
+    border:2px solid rgba(43,191,176,0.08);
+  }
+
+  .sidebar-tag {
+    background: rgba(43,191,176,0.15);
+    color: var(--teal);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 36px;
+    width: fit-content;
+  }
+
+  .sidebar-title {
+    color: white;
+    font-size: 27px;
+    font-weight: 800;
+    line-height: 1.3;
+    margin-bottom: 18px;
+  }
+
+  .sidebar-subtitle {
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    line-height: 1.65;
+    margin-bottom: 40px;
+  }
+
+  .sidebar-stat {
+    margin-top: auto;
+    background: rgba(43,191,176,0.12);
+    border: 1px solid rgba(43,191,176,0.25);
+    border-radius: 14px;
+    padding: 22px;
+  }
+  .sidebar-stat-num {
+    color: var(--teal);
+    font-size: 46px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .sidebar-stat-label {
+    color: rgba(255,255,255,0.65);
+    font-size: 12px;
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  .sidebar-meta {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .meta-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+  }
+  .meta-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+  }
+
+  /* ── CONTENT ── */
+  .content {
+    flex: 1;
+    padding: 50px 46px;
+    background: var(--gray-bg);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gray-text);
+    margin-bottom: 26px;
+  }
+
+  /* ── GRID ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── CARD ── */
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 26px;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .card-icon {
+    font-size: 20px;
+    margin-bottom: 10px;
+    opacity: .7;
+  }
+
+  .card-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray-text);
+    margin-bottom: 8px;
+  }
+
+  .card-number {
+    font-size: 46px;
+    font-weight: 900;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--gray-text);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-teal  { background: var(--teal-light); color: #1a8a80; }
+  .badge-blue  { background: var(--blue-light); color: var(--blue-mid); }
+  .badge-navy  { background: var(--navy); color: white; }
+
+  /* ── BAR CHART ── */
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 7px;
+    height: 100px;
+  }
+  .bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+  .bar-value { font-size: 9px; font-weight: 700; color: var(--navy); }
+  .bar-fill {
+    width: 100%;
+    border-radius: 5px 5px 0 0;
+    background: var(--blue-light);
+  }
+  .bar-fill.navy  { background: var(--navy); }
+  .bar-fill.teal  { background: var(--teal); }
+  .bar-fill.mid   { background: var(--blue-mid); }
+  .bar-fill.soft  { background: #9abfe0; }
+  .bar-fill.softer{ background: #b8d1eb; }
+  .bar-day { font-size: 9px; color: var(--gray-text); }
+
+  /* ── HOUR HEATMAP ── */
+  .hour-grid {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 12px;
+  }
+  .hour-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .hour-block { width: 100%; border-radius: 3px; background: #e2eaf4; }
+  .hour-block.low  { background: #b8d1eb; }
+  .hour-block.mid  { background: var(--blue-mid); }
+  .hour-block.high { background: var(--navy); }
+  .hour-block.peak { background: var(--teal); }
+  .hour-label { font-size: 7px; color: var(--gray-text); }
+
+  /* ── INSIGHT ── */
+  .insight {
+    background: var(--navy);
+    color: white;
+    border-radius: 14px;
+    padding: 22px 26px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .insight-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .insight-text { font-size: 13px; line-height: 1.65; color: rgba(255,255,255,0.85); }
+  .insight-text strong { color: var(--teal); }
+
+  /* ── COMPLEXITY ── */
+  .complexity-row { margin-bottom: 14px; }
+  .complexity-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .complexity-name { font-size: 12px; font-weight: 600; color: var(--navy); }
+  .complexity-pct  { font-size: 12px; font-weight: 700; color: var(--gray-text); }
+  .complexity-bar-bg { height: 10px; background: #e8edf2; border-radius: 6px; overflow: hidden; }
+  .complexity-bar-fill { height: 100%; border-radius: 6px; }
+
+  /* ── TURNO ── */
+  .turno-row { display: flex; gap: 10px; margin-top: 12px; }
+  .turno-item {
+    flex: 1;
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .turno-pct { font-size: 24px; font-weight: 900; color: var(--navy); }
+  .turno-pct.teal { color: var(--teal); }
+  .turno-name { font-size: 10px; color: var(--gray-text); margin-top: 4px; line-height: 1.4; }
+
+  /* ── TOPICS ── */
+  .topic-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .topic-chip { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .chip-1 { background: var(--navy);     color: white; font-size: 13px; padding: 8px 18px; }
+  .chip-2 { background: var(--navy-mid); color: white; font-size: 12px; padding: 7px 16px; }
+  .chip-3 { background: #1e4570;         color: white; }
+  .chip-4 { background: var(--blue-light); color: var(--blue-mid); }
+  .chip-5 { background: var(--teal-light); color: #1a8a80; }
+
+  /* ── CONCENTRIC ── */
+  .concentric-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    height: 200px;
+    margin: 10px 0;
+  }
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .ring-outer  { width:190px;height:190px; background:rgba(43,191,176,0.06); border-color:rgba(43,191,176,0.15); }
+  .ring-mid    { width:130px;height:130px; background:rgba(42,111,168,0.10); border-color:rgba(42,111,168,0.25); }
+  .ring-inner  { width: 80px;height: 80px; background:var(--navy); border-color:var(--navy); }
+
+  .ring-label {
+    position: absolute;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--navy);
+    white-space: nowrap;
+  }
+
+  /* ── TABLE ── */
+  .compare-table { width: 100%; border-collapse: collapse; }
+  .compare-table th {
+    padding: 14px 18px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-align: left;
+  }
+  .compare-table th:first-child { color: var(--gray-text); background: #f0f2f5; border-radius: 8px 0 0 0; }
+  .compare-table th:nth-child(2){ color: var(--gray-text); background: #f0f2f5; }
+  .compare-table th:nth-child(3){ color: white; background: var(--navy); border-radius: 0 8px 0 0; }
+  .compare-table td {
+    padding: 14px 18px;
+    font-size: 13px;
+    border-bottom: 1px solid #edf0f4;
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .compare-table td:first-child { font-weight: 700; color: var(--navy); background:#fafbfc; }
+  .compare-table td:nth-child(2){ color: var(--gray-text); }
+  .compare-table td:nth-child(3){ font-weight: 600; color: var(--teal); }
+
+  /* ── COVER ── */
+  .cover-left {
+    width: 520px;
+    background: var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover-left::before {
+    content:'';position:absolute;
+    top:50%;left:50%;transform:translate(-50%,-50%);
+    width:420px;height:420px;border-radius:50%;
+    border:1px solid rgba(43,191,176,0.12);
+  }
+  .cover-left::after {
+    content:'';position:absolute;
+    top:50%;left:50%;transform:translate(-50%,-50%);
+    width:280px;height:280px;border-radius:50%;
+    border:1px solid rgba(43,191,176,0.2);
+  }
+  .cover-logo-circle {
+    width: 120px; height: 120px;
+    background: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 2;
+    box-shadow: 0 0 0 8px rgba(43,191,176,0.18);
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--navy);
+    letter-spacing: 1px;
+    text-align: center;
+    flex-direction: column;
+  }
+  .cover-logo-un { font-size: 32px; font-weight: 900; line-height: 1; }
+
+  .cover-right {
+    flex: 1;
+    padding: 60px 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .cover-tag {
+    background: var(--teal-light);
+    color: var(--teal);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 7px 16px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 32px;
+    width: fit-content;
+    border: 1px solid rgba(43,191,176,0.3);
+  }
+  .cover-title {
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--navy);
+    line-height: 1.1;
+    margin-bottom: 0;
+  }
+  .cover-footer {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid #e0e5ec;
+    padding-top: 24px;
+  }
+  .cover-footer-item {
+    flex: 1;
+    padding-right: 24px;
+    border-right: 1px solid #e0e5ec;
+    margin-right: 24px;
+  }
+  .cover-footer-item:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+  .cover-footer-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gray-text); margin-bottom: 4px; }
+  .cover-footer-value { font-size: 14px; font-weight: 700; color: var(--navy); }
+
+  hr.divider { border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 18px 0; }
+</style>
+</head>
+<body>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 1 · CAPA
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="cover-left">
+    <div class="cover-logo-circle">
+      <div class="cover-logo-un">U</div>
+      <div>UNIFENAS</div>
+      <div style="font-size:9px;color:var(--gray-text);margin-top:2px;">ALFENAS</div>
+    </div>
+  </div>
+  <div class="cover-right">
+    <div>
+      <div class="cover-tag">Relatório Executivo de Impacto Acadêmico · Monitoria Fácil</div>
+      <div class="cover-title">Fisiologia<br>Médica na Era<br>da Inteligência<br>Artificial</div>
+    </div>
+    <div class="cover-footer">
+      <div class="cover-footer-item">
+        <div class="cover-footer-label">Período Avaliado</div>
+        <div class="cover-footer-value">Abril a Junho de 2026 (82 dias)</div>
+      </div>
+      <div class="cover-footer-item">
+        <div class="cover-footer-label">Disciplina</div>
+        <div class="cover-footer-value">Fisiologia Médica (UNIFENAS Alfenas)</div>
+      </div>
+      <div class="cover-footer-item">
+        <div class="cover-footer-label">Desenvolvimento</div>
+        <div class="cover-footer-value">Ian Frantchesco de Azevedo</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 2 · KPIs
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Resumo Geral</span>
+    <div class="sidebar-title">Resultados do Semestre</div>
+    <div class="sidebar-subtitle">
+      Os indicadores abaixo refletem o desempenho completo do monitor virtual ao longo de 82 dias — de abril a junho de 2026.
+    </div>
+    <div class="sidebar-meta">
+      <div class="meta-item">
+        <div class="meta-label">Período</div>
+        <div class="meta-value">Abr – Jun 2026</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Disciplina</div>
+        <div class="meta-value">Fisiologia Médica</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Plataforma</div>
+        <div class="meta-value">Instagram (Monitoria Fácil)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Base científica</div>
+        <div class="meta-value">Guyton & Hall, 13ª ed.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+    <div class="grid-2" style="margin-bottom:16px;">
+
+      <div class="card">
+        <div class="card-icon">💬</div>
+        <div class="card-label">Total de Interações</div>
+        <div class="card-number">368</div>
+        <div class="card-desc">perguntas recebidas e respondidas</div>
+        <span class="badge badge-teal">✓ 100% respondidas</span>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">👥</div>
+        <div class="card-label">Alunos Atendidos</div>
+        <div class="card-number">46</div>
+        <div class="card-desc">números únicos em contato</div>
+        <span class="badge badge-blue">8,0 int. por aluno</span>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">📅</div>
+        <div class="card-label">Dias com Atividade</div>
+        <div class="card-number">48</div>
+        <div class="card-desc">de 82 dias totais — 59% de cobertura</div>
+      </div>
+
+      <div class="card" style="background:var(--navy);border-color:var(--navy);">
+        <div class="card-icon" style="opacity:1;">✅</div>
+        <div class="card-label" style="color:rgba(255,255,255,0.45);">Taxa de Resposta</div>
+        <div class="card-number" style="color:white;">100%</div>
+        <div class="card-desc" style="color:rgba(255,255,255,0.55);">todas as perguntas foram respondidas</div>
+        <span class="badge" style="background:rgba(43,191,176,0.2);color:var(--teal);margin-top:12px;">sem falhas de atendimento</span>
+      </div>
+
+    </div>
+    <div class="grid-2">
+
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <div class="card-label">Média por Semana</div>
+        <div class="card-number">30,7</div>
+        <div class="card-desc">interações em média por semana</div>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <div class="card-label">Média por Dia Ativo</div>
+        <div class="card-number">7,7</div>
+        <div class="card-desc">interações nos dias com uso registrado</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 3 · GRÁFICOS DE CRESCIMENTO
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Padrão de Uso</span>
+    <div class="sidebar-title">Crescimento e Concentração</div>
+    <div class="sidebar-subtitle">
+      A base de alunos cresceu ao longo de todo o semestre e o uso se concentrou estrategicamente em torno do calendário curricular.
+    </div>
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">46</div>
+      <div class="sidebar-stat-label">alunos únicos alcançados — crescimento contínuo da base de usuários durante o semestre</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <!-- NOVOS ALUNOS POR SEMANA -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-label">Novos Alunos por Semana</div>
+      <div style="font-size:11px;color:var(--gray-text);margin-bottom:16px;">Crescimento da base de usuários ao longo do semestre</div>
+      <div class="bar-chart" style="height:110px;">
+        <div class="bar-item">
+          <div class="bar-value">4</div>
+          <div class="bar-fill softer" style="height:24%"></div>
+          <div class="bar-day">S1</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">3</div>
+          <div class="bar-fill softer" style="height:18%"></div>
+          <div class="bar-day">S2</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">5</div>
+          <div class="bar-fill soft" style="height:29%"></div>
+          <div class="bar-day">S3</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">17</div>
+          <div class="bar-fill navy" style="height:100%"></div>
+          <div class="bar-day" style="font-weight:700;color:var(--navy);">S4</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">6</div>
+          <div class="bar-fill mid" style="height:35%"></div>
+          <div class="bar-day">S5</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">4</div>
+          <div class="bar-fill soft" style="height:24%"></div>
+          <div class="bar-day">S6</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">2</div>
+          <div class="bar-fill softer" style="height:12%"></div>
+          <div class="bar-day">S7</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">5</div>
+          <div class="bar-fill teal" style="height:29%"></div>
+          <div class="bar-day">S8</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INTERAÇÕES POR DIA DA SEMANA -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div class="card-label">Interações por Dia da Semana</div>
+          <div style="font-size:11px;color:var(--gray-text);margin-bottom:16px;">Concentração de uso · total acumulado no período</div>
+        </div>
+        <span class="badge badge-navy">Qua = 36%</span>
+      </div>
+      <div class="bar-chart" style="height:100px;">
+        <div class="bar-item">
+          <div class="bar-value">29</div>
+          <div class="bar-fill" style="height:22%"></div>
+          <div class="bar-day">Segunda</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">45</div>
+          <div class="bar-fill soft" style="height:34%"></div>
+          <div class="bar-day">Terça</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">131</div>
+          <div class="bar-fill navy" style="height:100%"></div>
+          <div class="bar-day" style="font-weight:700;color:var(--navy);">Quarta</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">60</div>
+          <div class="bar-fill mid" style="height:46%"></div>
+          <div class="bar-day">Quinta</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">19</div>
+          <div class="bar-fill" style="height:14%"></div>
+          <div class="bar-day">Sexta</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">36</div>
+          <div class="bar-fill teal" style="height:27%"></div>
+          <div class="bar-day">Sábado</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-value">48</div>
+          <div class="bar-fill teal" style="height:37%"></div>
+          <div class="bar-day">Domingo</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <span class="badge badge-blue">77% em dias úteis</span>
+        <span class="badge badge-teal">23% no fim de semana</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 4 · ENGAJAMENTO
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Engajamento</span>
+    <div class="sidebar-title">De Ferramenta Experimental a Hábito de Estudo</div>
+    <div class="sidebar-subtitle">
+      Uma parcela expressiva dos alunos incorporou o monitor como ferramenta habitual, com uso crescente ao longo de todo o semestre.
+    </div>
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">8,0</div>
+      <div class="sidebar-stat-label">interações em média por aluno — consolidação real do hábito de uso</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <div class="grid-2">
+      <!-- CÍRCULOS CONCÊNTRICOS -->
+      <div class="card" style="display:flex;flex-direction:column;">
+        <div class="card-label">Perfil de Engajamento dos Alunos</div>
+        <div style="font-size:11px;color:var(--gray-text);margin-bottom:8px;">Profundidade de uso ao longo do semestre</div>
+
+        <div class="concentric-wrap">
+          <div class="ring ring-outer"></div>
+          <div class="ring ring-mid"></div>
+          <div class="ring ring-inner" style="display:flex;align-items:center;justify-content:center;">
+            <div style="text-align:center;">
+              <div style="font-size:18px;font-weight:900;color:white;">13</div>
+              <div style="font-size:8px;color:rgba(255,255,255,0.6);">Power</div>
+            </div>
+          </div>
+          <!-- labels -->
+          <div class="ring-label" style="top:10px;right:20px;">
+            <span style="font-weight:800;color:var(--navy);">46</span>
+            <span style="color:var(--gray-text);font-size:10px;"> alunos experimentaram</span>
+          </div>
+          <div class="ring-label" style="top:50px;right:10px;">
+            <span style="font-weight:800;color:var(--blue-mid);">18</span>
+            <span style="color:var(--gray-text);font-size:10px;"> usuários frequentes (≥5)</span>
+          </div>
+          <div class="ring-label" style="bottom:38px;right:20px;">
+            <span style="font-weight:800;color:var(--navy);">13</span>
+            <span style="color:var(--gray-text);font-size:10px;"> power users (≥10)</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <span class="badge badge-teal">39% são usuários frequentes</span>
+          <span class="badge badge-blue">28% são power users</span>
+        </div>
+      </div>
+
+      <!-- CRESCIMENTO SEMANAL -->
+      <div class="card">
+        <div class="card-label">Crescimento de Interações por Semana</div>
+        <div style="font-size:11px;color:var(--gray-text);margin-bottom:16px;">A adoção acelera conforme o semestre avança</div>
+
+        <div style="text-align:center;margin:10px 0 20px;">
+          <div style="font-size:56px;font-weight:900;color:var(--teal);line-height:1;">521%</div>
+          <div style="font-size:13px;color:var(--navy);font-weight:600;">Crescimento da Semana 1 para o Pico</div>
+          <div style="font-size:11px;color:var(--gray-text);margin-top:4px;">A aceleração na adoção indica que a confiança no monitor virtual cresceu exponencialmente à medida que o semestre avançou.</div>
+        </div>
+
+        <div class="bar-chart" style="height:80px;">
+          <div class="bar-item"><div class="bar-value">14</div><div class="bar-fill softer" style="height:16%"></div><div class="bar-day">S1</div></div>
+          <div class="bar-item"><div class="bar-value">18</div><div class="bar-fill soft"   style="height:21%"></div><div class="bar-day">S2</div></div>
+          <div class="bar-item"><div class="bar-value">14</div><div class="bar-fill soft"   style="height:16%"></div><div class="bar-day">S3</div></div>
+          <div class="bar-item"><div class="bar-value">72</div><div class="bar-fill mid"    style="height:83%"></div><div class="bar-day">S4</div></div>
+          <div class="bar-item"><div class="bar-value">61</div><div class="bar-fill mid"    style="height:70%"></div><div class="bar-day">S5</div></div>
+          <div class="bar-item"><div class="bar-value">23</div><div class="bar-fill soft"   style="height:26%"></div><div class="bar-day">S6</div></div>
+          <div class="bar-item"><div class="bar-value">37</div><div class="bar-fill mid"    style="height:43%"></div><div class="bar-day">S7</div></div>
+          <div class="bar-item"><div class="bar-value">87</div><div class="bar-fill teal"   style="height:100%"></div><div class="bar-day" style="font-weight:700;color:var(--teal);">S8↑</div></div>
+        </div>
+        <div style="margin-top:12px;">
+          <span class="badge badge-teal">Semana 8 = maior semana do semestre</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 5 · QUANDO OS ALUNOS ESTUDAM
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Padrão Temporal</span>
+    <div class="sidebar-title">Quando os Alunos Buscam Conhecimento</div>
+    <div class="sidebar-subtitle">
+      A análise dos horários revela que os alunos utilizam o monitor no momento exato em que a dúvida surge — evidência de aprendizado ativo e contínuo.
+    </div>
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">69%</div>
+      <div class="sidebar-stat-label">das interações ocorrem à tarde ou à noite — horário pós-aula, ideal para consolidação da memória</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-label">Distribuição por Turno</div>
+      <div class="turno-row">
+        <div class="turno-item">
+          <div class="turno-pct">27%</div>
+          <div class="turno-name">Manhã<br>6h – 12h</div>
+        </div>
+        <div class="turno-item">
+          <div class="turno-pct">35%</div>
+          <div class="turno-name">Tarde<br>12h – 18h</div>
+        </div>
+        <div class="turno-item" style="background:var(--navy);border-color:var(--navy);">
+          <div class="turno-pct" style="color:var(--teal);">34%</div>
+          <div class="turno-name" style="color:rgba(255,255,255,0.65);">Noite<br>18h – 24h</div>
+        </div>
+        <div class="turno-item">
+          <div class="turno-pct teal">4%</div>
+          <div class="turno-name">Madrugada<br>0h – 6h</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-label">Mapa de Calor — Hora do Dia</div>
+        <div style="font-size:11px;color:var(--gray-text);margin-bottom:4px;">Concentração de interações por hora</div>
+        <div class="hour-grid">
+          <div class="hour-cell"><div class="hour-block low"  style="height:18px"></div><div class="hour-label">0h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:12px"></div><div class="hour-label">1h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:5px"></div><div class="hour-label">2h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:8px"></div><div class="hour-label">3h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:0px"></div><div class="hour-label">4h</div></div>
+          <div class="hour-cell"><div class="hour-block"      style="height:5px"></div><div class="hour-label">5h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:18px"></div><div class="hour-label">6h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:32px"></div><div class="hour-label">7h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:52px"></div><div class="hour-label">8h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:60px"></div><div class="hour-label">9h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:40px"></div><div class="hour-label">10h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:44px"></div><div class="hour-label">11h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:50px"></div><div class="hour-label">12h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:38px"></div><div class="hour-label">13h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:55px"></div><div class="hour-label">14h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:44px"></div><div class="hour-label">15h</div></div>
+          <div class="hour-cell"><div class="hour-block mid"  style="height:46px"></div><div class="hour-label">16h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:74px"></div><div class="hour-label">17h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:80px"></div><div class="hour-label">18h</div></div>
+          <div class="hour-cell"><div class="hour-block peak" style="height:82px"></div><div class="hour-label">19h</div></div>
+          <div class="hour-cell"><div class="hour-block high" style="height:66px"></div><div class="hour-label">20h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:25px"></div><div class="hour-label">21h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:25px"></div><div class="hour-label">22h</div></div>
+          <div class="hour-cell"><div class="hour-block low"  style="height:27px"></div><div class="hour-label">23h</div></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--teal);display:inline-block;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Pico 17h–19h</span>
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--navy);display:inline-block;margin-left:6px;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Alto</span>
+          <span style="width:10px;height:10px;border-radius:2px;background:var(--blue-mid);display:inline-block;margin-left:6px;"></span>
+          <span style="font-size:10px;color:var(--gray-text);">Moderado</span>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card" style="flex:1;">
+          <div class="card-label">Pico de Acesso</div>
+          <div class="card-number" style="font-size:36px;">17h–19h</div>
+          <div class="card-desc">Logo após as aulas — o momento ideal para fixação do conteúdo. Os alunos chegam com a dúvida formada e buscam a resposta imediatamente.</div>
+        </div>
+        <div class="card" style="flex:1;">
+          <div class="card-label">Disponibilidade Comprovada</div>
+          <div class="card-number" style="font-size:36px;">84</div>
+          <div class="card-desc">interações nos fins de semana e <strong>15 na madrugada</strong> — janelas completamente fora do alcance da monitoria tradicional.</div>
+          <span class="badge badge-teal">Atendimento 24/7 confirmado</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="insight">
+      <div class="insight-icon">💡</div>
+      <div class="insight-text">
+        O pico às <strong>17h–19h</strong> e a dominância das <strong>quartas-feiras</strong> indicam integração real com a rotina curricular. Os <strong>84 acessos nos fins de semana</strong> e os <strong>15 na madrugada</strong> confirmam que a disponibilidade 24/7 atende uma demanda que nenhuma monitoria presencial consegue cobrir.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 6 · QUALIDADE DO APRENDIZADO
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Qualidade Pedagógica</span>
+    <div class="sidebar-title">A Profundidade do Aprendizado</div>
+    <div class="sidebar-subtitle">
+      Os alunos não apenas fazem perguntas — eles formulam dúvidas elaboradas, cobrem múltiplos sistemas fisiológicos e mantêm o crescimento de uso até o fim do semestre.
+    </div>
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">521%</div>
+      <div class="sidebar-stat-label">de crescimento da Semana 1 até o pico — a ferramenta ganhou confiança ao longo do tempo, não perdeu</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <div class="grid-2" style="margin-bottom:16px;">
+
+      <div class="card">
+        <div class="card-label">Complexidade das Perguntas</div>
+        <div style="font-size:11px;color:var(--gray-text);margin-bottom:16px;">Profundidade de formulação por parte dos alunos</div>
+
+        <div class="complexity-row">
+          <div class="complexity-header">
+            <span class="complexity-name">Elaboradas (20–100 chars)</span>
+            <span class="complexity-pct">67%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:67%;background:var(--navy);"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Dúvidas formuladas com contexto — o aluno raciocina antes de perguntar</div>
+        </div>
+
+        <div class="complexity-row">
+          <div class="complexity-header">
+            <span class="complexity-name">Aprofundadas (&gt;100 chars)</span>
+            <span class="complexity-pct">14%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:14%;background:var(--teal);"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Cenário clínico descrito — nível de raciocínio avançado</div>
+        </div>
+
+        <div class="complexity-row">
+          <div class="complexity-header">
+            <span class="complexity-name">Consultas rápidas (&lt;20 chars)</span>
+            <span class="complexity-pct">19%</span>
+          </div>
+          <div class="complexity-bar-bg">
+            <div class="complexity-bar-fill" style="width:19%;background:#b8d1eb;"></div>
+          </div>
+          <div class="card-desc" style="margin-top:4px;">Busca direta por conceito — uso ágil como dicionário de fisiologia</div>
+        </div>
+
+        <hr class="divider">
+        <span class="badge badge-teal">81% com contexto ou elaboração</span>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Cobertura Curricular — Temas Consultados</div>
+        <div style="font-size:11px;color:var(--gray-text);margin-bottom:4px;">Diversidade de sistemas fisiológicos ao longo do semestre</div>
+        <div class="topic-grid">
+          <span class="topic-chip chip-1">Fisiologia Cardiovascular</span>
+          <span class="topic-chip chip-1">Fisiologia Renal</span>
+          <span class="topic-chip chip-2">Sistema Nervoso</span>
+          <span class="topic-chip chip-2">Fisiologia Geral</span>
+          <span class="topic-chip chip-3">Neurociência</span>
+          <span class="topic-chip chip-3">Anatomia</span>
+          <span class="topic-chip chip-3">Endocrinologia</span>
+          <span class="topic-chip chip-4">Farmacologia</span>
+          <span class="topic-chip chip-4">Metabolismo</span>
+          <span class="topic-chip chip-4">Imunologia</span>
+          <span class="topic-chip chip-5">Fisiologia Hepática</span>
+          <span class="topic-chip chip-5">Fisiologia Celular</span>
+          <span class="topic-chip chip-5">Fisiologia do Sono</span>
+          <span class="topic-chip chip-5">Sistema Renina-Angiotensina</span>
+          <span class="topic-chip chip-5">Fisiologia Reprodutiva</span>
+        </div>
+        <div style="margin-top:14px;">
+          <span class="badge badge-navy">+15 sistemas fisiológicos cobertos</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="insight">
+      <div class="insight-icon">📈</div>
+      <div class="insight-text">
+        A <strong>semana 8 foi a de maior atividade de todo o semestre</strong> (87 interações) — o oposto do que ocorre com ferramentas abandonadas com o tempo. <strong>81% das perguntas foram formuladas com contexto ou elaboração</strong>, revelando alunos que pensam antes de perguntar. A cobertura de <strong>mais de 15 sistemas fisiológicos</strong> mostra que o monitor acompanhou os alunos por todo o programa curricular.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════
+     PÁGINA 7 · COMPARATIVO
+════════════════════════════════════════════ -->
+<div class="page">
+  <div class="sidebar">
+    <span class="sidebar-tag">Posicionamento</span>
+    <div class="sidebar-title">Monitoria Fácil vs. Monitoria Tradicional</div>
+    <div class="sidebar-subtitle">
+      O monitor virtual entrega vantagens estruturais impossíveis de replicar no modelo presencial — não como substituição, mas como expansão do suporte ao aluno.
+    </div>
+    <div class="sidebar-stat">
+      <div class="sidebar-stat-num">24/7</div>
+      <div class="sidebar-stat-label">disponibilidade comprovada pelos dados de madrugada, fins de semana e feriados</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-label">Fisiologia Médica · UNIFENAS Alfenas · Monitoria Fácil (IA)</div>
+
+    <div class="card">
+      <div class="card-label" style="margin-bottom:20px;">Análise Comparativa — Critérios de Qualidade</div>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Critério</th>
+            <th>Monitoria Tradicional</th>
+            <th>Monitoria Fácil (IA)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Horário de Cobertura</td>
+            <td>Restrito (horários fixos/agendados)</td>
+            <td>24/7 (Madrugadas e Finais de semana)</td>
+          </tr>
+          <tr>
+            <td>Capacidade de Atendimento</td>
+            <td>1:1 (Filas e espera)</td>
+            <td>Escala Infinita (46 alunos simultâneos sem perda de qualidade)</td>
+          </tr>
+          <tr>
+            <td>Base de Conhecimento</td>
+            <td>Variável (Depende do aluno monitor)</td>
+            <td>100% Padronizada (Guyton & Hall 13ª ed.)</td>
+          </tr>
+          <tr>
+            <td>Geração de Dados Pedagógicos</td>
+            <td>Nenhuma (Dúvidas se perdem no ar)</td>
+            <td>Rastreabilidade Total (Catalogação em tempo real)</td>
+          </tr>
+          <tr>
+            <td>Taxa de Resposta</td>
+            <td>Variável (depende da disponibilidade)</td>
+            <td>100% — sem filas, sem ausências</td>
+          </tr>
+          <tr>
+            <td>Consistência do Conteúdo</td>
+            <td>Variável por turma e período</td>
+            <td>Uniforme para todos os alunos</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="insight" style="margin-top:16px;">
+      <div class="insight-icon">🏆</div>
+      <div class="insight-text">
+        Em 82 dias, o Monitor Fácil respondeu <strong>368 perguntas com taxa de 100%</strong>, atendeu <strong>46 alunos simultaneamente</strong> sem filas ou ausências, gerou um banco de dados pedagógico com mais de <strong>15 temas curriculares rastreados</strong> e comprovou adoção crescente até a última semana do semestre — resultados que estruturalmente não são possíveis na monitoria tradicional.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>

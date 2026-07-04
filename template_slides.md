@@ -111,6 +111,18 @@ Após gerar e baixar os slides, solicitar ajuste de margem:
 
 ---
 
+## Exportação para anúncio (evitar erro de dimensionamento)
+- **NUNCA subir o arquivo cru do DALL-E como anúncio.** O DALL-E gera em
+  1024×1792 (≈9:16), mais alto que o limite do feed do Meta → erro de
+  dimensionamento no upload.
+- Sempre reformatar para o tamanho exato antes de anunciar:
+  - **1:1 → 1080×1080** (padrão atual, universal em feed/stories/reels)
+  - 4:5 → 1080×1350 também é aceito e recomendado pelo Meta (mais tela no
+    feed, melhor engajamento), mas precisa de versão 9:16 separada p/ stories
+- O passo de margem de segurança acima já entrega o tamanho exato aceito.
+
+---
+
 ## Legenda padrão
 - Gancho forte na primeira linha (sem hashtag, sem emoji excessivo)
 - Corpo: contexto clínico → novidade do estudo → resultados em bullets (→)

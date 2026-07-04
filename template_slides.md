@@ -7,7 +7,7 @@ Canal de curadoria científica semanal em cardiologia e arritmias para cardiolog
 
 ## Formato dos slides
 - **Plataforma:** Instagram Feed
-- **Dimensões:** 1080×1350px (4:5)
+- **Dimensões:** 1080×1080px (1:1)
 - **Idioma do prompt:** inglês (melhor eficácia no DALL-E/ChatGPT)
 - **Texto visível nos slides:** português
 - **Gerador:** ChatGPT com DALL-E 3
@@ -105,8 +105,8 @@ Canal de curadoria científica semanal em cardiologia e arritmias para cardiolog
 ## Margem de segurança (pós-geração)
 Após gerar e baixar os slides, solicitar ajuste de margem:
 - Escalar para 93% do tamanho
-- Centralizar em canvas 1080×1350 navy (#010717)
-- Resultado: 38px de margem nas laterais, 47px no topo/base
+- Centralizar em canvas 1080×1080 navy (#010717)
+- Resultado: ~38px de margem em todos os lados
 - Garante que badges e footer não sejam cortados pelo Instagram
 
 ---

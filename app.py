@@ -22,6 +22,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +37,17 @@ DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.s
 STATIC       = Path(__file__).parent / "static"
 
 app = FastAPI(title="Patologias — Painel Clínico")
+
+# ── Rate limiting (limite de requisições) ────────────────────────────────────
+# Limita cada visitante (identificado pelo IP) a 120 requisições por minuto.
+# Protege contra sobrecarga do servidor (DoS) e cópia em massa do banco
+# (scraping). O SlowAPIMiddleware aplica esse limite a TODAS as rotas
+# automaticamente — não é preciso decorar cada endpoint. Quem ultrapassa o
+# limite recebe a resposta HTTP 429 ("Too Many Requests") em vez dos dados.
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Cache em memória do processo para listagens/categorias (dados read-only).
 # Limitação consciente: não expira e não é compartilhado entre workers — após

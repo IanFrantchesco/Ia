@@ -97,6 +97,19 @@ def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
 
 
+@pytest.mark.parametrize("url", ["/", "/health", "/api/bacterias/categorias"])
+def test_headers_de_seguranca(client, url):
+    h = client.get(url).headers
+    assert "content-security-policy" in h
+    assert h["x-content-type-options"] == "nosniff"
+    assert h["x-frame-options"] == "DENY"
+    assert "strict-transport-security" in h
+    # a CSP pragmática precisa permitir inline (frontend inline) e data: (ícones SVG)
+    csp = h["content-security-policy"]
+    assert "script-src 'self' 'unsafe-inline'" in csp
+    assert "img-src 'self' data:" in csp
+
+
 def test_conn_bact_e_read_only():
     # A conexão de patologias permite leitura, mas rejeita escrita (query_only).
     with app_module.conn_bact() as db:

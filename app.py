@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -54,6 +55,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Patologias — Painel Clínico", lifespan=lifespan)
+
+# ── Compressão Gzip ──────────────────────────────────────────────────────────
+# Comprime respostas JSON grandes (>500 bytes) quando o cliente aceita gzip —
+# reduz o egress ~60–80% e corta custo, sem alterar o conteúdo (o navegador
+# descomprime). Registrado ANTES do SlowAPIMiddleware de propósito: o SlowAPI é
+# um BaseHTTPMiddleware que "streamifica" a resposta; se o Gzip ficasse por fora
+# dele, veria um stream e comprimiria até respostas minúsculas, ignorando o
+# minimum_size. Como o Gzip fica por dentro, ele vê a resposta original e
+# respeita o limite (respostas pequenas como /health não são comprimidas).
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # ── Rate limiting (limite de requisições) ────────────────────────────────────
 # Limita cada visitante (identificado pelo IP) a 120 requisições por minuto.

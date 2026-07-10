@@ -110,6 +110,23 @@ def test_headers_de_seguranca(client, url):
     assert "img-src 'self' data:" in csp
 
 
+def test_gzip_em_resposta_grande(client):
+    # Uma resposta JSON grande (detalhe) deve vir comprimida quando o cliente aceita.
+    pid = client.get("/api/bacterias/patologias").json()[0]["id"]
+    r = client.get(
+        f"/api/bacterias/patologia/{pid}", headers={"Accept-Encoding": "gzip"}
+    )
+    assert r.status_code == 200
+    assert r.headers.get("content-encoding") == "gzip"
+
+
+def test_gzip_ignora_resposta_pequena(client):
+    # Resposta pequena (< minimum_size) NÃO deve ser comprimida (evita inflar bytes).
+    r = client.get("/health", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200
+    assert r.headers.get("content-encoding") != "gzip"
+
+
 def test_conn_bact_e_read_only():
     # A conexão de patologias permite leitura, mas rejeita escrita (query_only).
     with app_module.conn_bact() as db:

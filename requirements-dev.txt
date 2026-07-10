@@ -1,0 +1,4 @@
+# Dependências apenas de desenvolvimento/teste (não vão para produção).
+# httpx é exigido pelo fastapi.testclient.TestClient.
+pytest==8.3.4
+httpx==0.28.1

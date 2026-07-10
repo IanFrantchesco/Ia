@@ -910,6 +910,6 @@ def cronicas_detalhe(patologia_id: int):
 
 
 # ── static (deve ser o último mount) ───────────────────────────────────────
-# Catch-all de arquivos estáticos (patologias.html, app.js, css, libs). Precisa
-# vir DEPOIS das rotas /api e da rota "/" para não capturá-las primeiro.
+# Catch-all de arquivos estáticos (patologias.html, bacterias.html, chart.umd.min.js).
+# Precisa vir DEPOIS das rotas /api e da rota "/" para não capturá-las primeiro.
 app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")

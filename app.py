@@ -66,6 +66,41 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+# ── Headers de segurança ─────────────────────────────────────────────────────
+# Cabeçalhos HTTP de hardening aplicados a toda resposta. A CSP é "pragmática":
+# permite 'unsafe-inline' em script/style porque o frontend atual é fortemente
+# inline (blocos <script>/<style> e onclick=). Uma CSP estrita exigiria refatorar
+# todo o frontend — fica para depois. 'img-src data:' cobre os ícones SVG inline.
+# HSTS é seguro: o Railway serve HTTPS na borda; navegadores ignoram HSTS em HTTP.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+}
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    """Injeta os headers de segurança em toda resposta (sem sobrescrever existentes)."""
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 # Cache em memória do processo para listagens/categorias (dados read-only).
 # Limitação consciente: não expira e não é compartilhado entre workers — após
 # reconstruir o banco, reinicie o processo para refletir os novos dados.

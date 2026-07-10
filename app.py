@@ -296,7 +296,15 @@ def _agent_detalhe(cfg, patologia_id):
     Posologias e interações dos cards reais são buscadas em lote para evitar o
     problema N+1. Os identificadores interpolados no SQL vêm sempre de ``cfg``
     (constantes confiáveis); os valores continuam parametrizados com ``?``.
+
+    O resultado é memoizado em ``_cache`` por (domínio, patologia): como este é o
+    endpoint mais pesado (~10 consultas por chamada) e os dados são read-only,
+    guardar a resposta pronta evita refazer todo o trabalho a cada acesso.
     """
+    cache_key = f"{cfg.route}:detalhe:{patologia_id}"
+    if cache_key in _cache:
+        return _cache[cache_key]
+
     with conn_bact() as db:
         pat = _fetch_patologia(db, patologia_id)
 
@@ -531,6 +539,7 @@ def _agent_detalhe(cfg, patologia_id):
         if cfg.extra_agent_key:
             result[cfg.extra_agent_key] = [dict(a) for a in agentes]
 
+    _cache[cache_key] = result
     return result
 
 
@@ -642,7 +651,14 @@ def cronicas_detalhe(patologia_id: int):
     medicamentos (até 3) saem da própria diretriz — principal, combinação e
     alternativa — e cada nome é resolvido na tabela ``medicamentos`` por busca
     em cascata (``_lookup_med``).
+
+    Como nos domínios por agente, a resposta é memoizada em ``_cache`` (dados
+    read-only) para não refazer as consultas a cada acesso à mesma patologia.
     """
+    cache_key = f"cronicas:detalhe:{patologia_id}"
+    if cache_key in _cache:
+        return _cache[cache_key]
+
     # GRAU_SCORE espelha EVIDENCIA_SCORE de propósito: grau de recomendação e
     # nível de evidência são eixos distintos, ainda que a escala coincida aqui.
     GRAU_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
@@ -797,6 +813,7 @@ def cronicas_detalhe(patologia_id: int):
             "escores_diagnosticos":   escores,
         }
 
+    _cache[cache_key] = result
     return result
 
 

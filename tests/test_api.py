@@ -127,6 +127,19 @@ def test_gzip_ignora_resposta_pequena(client):
     assert r.headers.get("content-encoding") != "gzip"
 
 
+def test_cache_limitado():
+    # O cache não cresce além do teto; ao encher, descarta as entradas mais antigas.
+    c = app_module._BoundedCache(max_size=3)
+    for i in range(10):
+        c[f"k{i}"] = i
+    assert len(c) == 3
+    assert "k9" in c and "k8" in c and "k7" in c  # mantém as mais recentes
+    assert "k0" not in c and "k6" not in c        # descartou as mais antigas
+    # sobrescrever chave existente não conta como nova nem estoura o teto
+    c["k9"] = 99
+    assert len(c) == 3 and c["k9"] == 99
+
+
 def test_conn_bact_e_read_only():
     # A conexão de patologias permite leitura, mas rejeita escrita (query_only).
     with app_module.conn_bact() as db:

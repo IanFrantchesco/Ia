@@ -112,10 +112,36 @@ async def add_security_headers(request, call_next):
     return response
 
 
-# Cache em memória do processo para listagens/categorias (dados read-only).
+# Cache em memória do processo para listagens/categorias/detalhes (read-only).
 # Limitação consciente: não expira e não é compartilhado entre workers — após
 # reconstruir o banco, reinicie o processo para refletir os novos dados.
-_cache: dict = {}
+
+
+class _BoundedCache(dict):
+    """``dict`` com teto de tamanho.
+
+    Ao inserir uma chave nova com o cache cheio, descarta a entrada mais antiga
+    (``dict`` preserva a ordem de inserção). Evita crescimento indefinido de
+    memória sob uso amplo. Todas as gravações ``_cache[k] = v`` já existentes
+    passam por aqui — nenhum call site muda. A evicção é *best-effort*: sob o
+    threadpool do FastAPI, uma corrida apenas pula a evicção (o pior caso é o
+    cache exceder o teto por pouco, temporariamente), nunca corrompe.
+    """
+
+    def __init__(self, max_size):
+        super().__init__()
+        self._max = max_size
+
+    def __setitem__(self, key, value):
+        if key not in self and len(self) >= self._max:
+            try:
+                dict.__delitem__(self, next(iter(self)))
+            except Exception:
+                pass
+        dict.__setitem__(self, key, value)
+
+
+_cache = _BoundedCache(max_size=2048)
 
 # Normalização 0–100 para o gráfico radar dos medicamentos.
 # EVIDENCIA_SCORE: nível de evidência (A = ECR … D = consenso de especialistas).

@@ -8,3 +8,4 @@ __pycache__/
 *.sqlite-wal
 database/_trat_*.py
 *.pdf
+.pytest_cache/

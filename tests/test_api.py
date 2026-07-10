@@ -1,0 +1,95 @@
+"""Testes de contrato da API (smoke/regressão).
+
+Verifica status HTTP e a estrutura (chaves de topo) das respostas — não faz
+"golden snapshot" de valores, que seria frágil e quebraria a cada ajuste legítimo
+de dado. Varre TODOS os IDs de patologia de cada domínio para dar cobertura ampla.
+"""
+import pytest
+
+import app as app_module
+
+# Domínios "por agente" → valor esperado de `dominio` no detalhe.
+AGENT_DOMINIOS = {
+    "bacterias": "bacteriana",
+    "virais": "viral",
+    "fungicos": "fungico",
+    "parasitos": "parasitario",
+}
+
+# Chaves de topo que todo detalhe (agente e crônico) deve conter.
+DETALHE_KEYS = {
+    "dominio",
+    "patologia",
+    "agentes",
+    "top3_medicamentos",
+    "tratamento_padrao",
+    "sintomas",
+    "criterios_diagnosticos",
+    "escores_diagnosticos",
+}
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "patologias_bacterianas" in body["dbs"]
+
+
+def test_root_serves_html(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+
+
+def test_limiter_presente():
+    # A proteção de rate limit deve existir (o comportamento 429 é validado à
+    # parte, manualmente, por depender de janela de tempo).
+    assert hasattr(app_module, "limiter")
+
+
+@pytest.mark.parametrize("rota", list(AGENT_DOMINIOS))
+def test_categorias(client, rota):
+    r = client.get(f"/api/{rota}/categorias")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+@pytest.mark.parametrize("rota", list(AGENT_DOMINIOS))
+def test_patologias(client, rota):
+    r = client.get(f"/api/{rota}/patologias")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+@pytest.mark.parametrize("rota,dominio", list(AGENT_DOMINIOS.items()))
+def test_detalhe_todos_os_ids(client, rota, dominio):
+    ids = [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]
+    assert ids, f"nenhuma patologia para {rota}"
+    for pid in ids:
+        r = client.get(f"/api/{rota}/patologia/{pid}")
+        assert r.status_code == 200, f"{rota}/{pid} -> {r.status_code}"
+        body = r.json()
+        assert DETALHE_KEYS.issubset(body), f"faltam chaves em {rota}/{pid}"
+        assert body["dominio"] == dominio
+    # Bacterianas mantêm a chave histórica extra "bacterias".
+    if rota == "bacterias":
+        assert "bacterias" in client.get(f"/api/bacterias/patologia/{ids[0]}").json()
+
+
+def test_cronicas(client):
+    assert client.get("/api/cronicas/categorias").status_code == 200
+    ids = [p["id"] for p in client.get("/api/cronicas/patologias").json()]
+    assert ids, "nenhuma patologia cronica"
+    for pid in ids:
+        r = client.get(f"/api/cronicas/patologia/{pid}")
+        assert r.status_code == 200
+        body = r.json()
+        assert DETALHE_KEYS.issubset(body)
+        assert body["dominio"] == "cronico"
+        assert body["agentes"] == []
+
+
+def test_detalhe_404(client):
+    assert client.get("/api/bacterias/patologia/99999999").status_code == 404

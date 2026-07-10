@@ -16,7 +16,7 @@ import logging
 import re
 import sqlite3
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -36,7 +36,24 @@ log = logging.getLogger(__name__)
 DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.sqlite"
 STATIC       = Path(__file__).parent / "static"
 
-app = FastAPI(title="Patologias — Painel Clínico")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Ciclo de vida do app (substitui o ``@app.on_event`` deprecated).
+
+    O código antes do ``yield`` roda no startup; o de depois, no shutdown. É aqui
+    que, no futuro, a conexão com o banco de clientes (persistente) será
+    inicializada — por ora, apenas confirma a presença do banco read-only.
+    """
+    if DB_BACT_PATH.exists():
+        log.info("DB ok: %s", DB_BACT_PATH.name)
+    else:
+        log.error("DB não encontrado: %s", DB_BACT_PATH)
+    yield
+    # (shutdown: nada a liberar por enquanto)
+
+
+app = FastAPI(title="Patologias — Painel Clínico", lifespan=lifespan)
 
 # ── Rate limiting (limite de requisições) ────────────────────────────────────
 # Limita cada visitante (identificado pelo IP) a 120 requisições por minuto.
@@ -77,16 +94,6 @@ def conn_bact():
         yield db
     finally:
         db.close()
-
-
-# ── startup ────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-def startup_check():
-    if DB_BACT_PATH.exists():
-        log.info("DB ok: %s", DB_BACT_PATH.name)
-    else:
-        log.error("DB não encontrado: %s", DB_BACT_PATH)
 
 
 # ── endpoints ──────────────────────────────────────────────────────────────

@@ -4,6 +4,8 @@ Verifica status HTTP e a estrutura (chaves de topo) das respostas — não faz
 "golden snapshot" de valores, que seria frágil e quebraria a cada ajuste legítimo
 de dado. Varre TODOS os IDs de patologia de cada domínio para dar cobertura ampla.
 """
+import sqlite3
+
 import pytest
 
 import app as app_module
@@ -93,3 +95,11 @@ def test_cronicas(client):
 
 def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
+
+
+def test_conn_bact_e_read_only():
+    # A conexão de patologias permite leitura, mas rejeita escrita (query_only).
+    with app_module.conn_bact() as db:
+        assert db.execute("SELECT COUNT(*) FROM patologias").fetchone()[0] > 0
+        with pytest.raises(sqlite3.OperationalError):
+            db.execute("CREATE TABLE _proibido (x)")

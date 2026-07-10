@@ -80,20 +80,33 @@ LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
 # ── helpers ────────────────────────────────────────────────────────────────
 
 @contextmanager
-def conn_bact():
-    """Conexão SQLite por requisição (abre e fecha a cada chamada).
+def _connect(db_path, *, read_only=True):
+    """Abre uma conexão SQLite configurada e a fecha ao sair do bloco.
 
     WAL + busy_timeout permitem leituras concorrentes sem travar enquanto o
     build reescreve o arquivo; ``row_factory=Row`` dá acesso às colunas por nome.
+    Quando ``read_only`` (padrão), aplica ``PRAGMA query_only=ON``, que impede
+    qualquer escrita acidental — reforço para o banco de patologias, que é só de
+    leitura. O parâmetro prevê o futuro banco de clientes: esse será read-write
+    (num Volume persistente) e abrirá com ``read_only=False``.
     """
-    db = sqlite3.connect(DB_BACT_PATH, timeout=10)
+    db = sqlite3.connect(db_path, timeout=10)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA busy_timeout=5000")
+    if read_only:
+        db.execute("PRAGMA query_only=ON")
     try:
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def conn_bact():
+    """Conexão com o banco de patologias (só leitura). Wrapper fino de ``_connect``."""
+    with _connect(DB_BACT_PATH, read_only=True) as db:
+        yield db
 
 
 # ── endpoints ──────────────────────────────────────────────────────────────

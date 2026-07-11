@@ -54,7 +54,17 @@ async def lifespan(app: FastAPI):
     # (shutdown: nada a liberar por enquanto)
 
 
-app = FastAPI(title="Patologias — Painel Clínico", lifespan=lifespan)
+# docs_url/redoc_url/openapi_url = None: desativa a documentação interativa e o
+# schema OpenAPI públicos. Reduz a divulgação da superfície da API (API9) — num
+# produto a ser comercializado, não convém expor toda a lista de endpoints e seus
+# schemas. Podem ser reativados/protegidos por auth quando/se fizer sentido.
+app = FastAPI(
+    title="Patologias — Painel Clínico",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # ── Compressão Gzip ──────────────────────────────────────────────────────────
 # Comprime respostas JSON grandes (>500 bytes) quando o cliente aceita gzip —

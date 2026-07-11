@@ -19,7 +19,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -198,6 +198,15 @@ def health():
             "patologias_bacterianas": DB_BACT_PATH.exists(),
         },
     }
+
+
+# Agrupa as rotas de dados sob um único router com prefixo /api. Puramente
+# estrutural (nenhuma lógica de autenticação hoje): quando a assinatura entrar,
+# proteger todos os dados vira uma linha (`dependencies=[Depends(auth)]` aqui),
+# em vez de editar cada rota. "/", "/health" e o mount de estáticos ficam DE
+# PROPÓSITO fora do router — precisam continuar acessíveis sem login (a tela de
+# entrada, e o healthcheck do Railway, que não pode ficar atrás de auth).
+api = APIRouter(prefix="/api")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -637,62 +646,62 @@ def _agent_detalhe(cfg, patologia_id):
 
 # ── rotas finas (uma linha cada) ────────────────────────────────────────────
 
-@app.get("/api/bacterias/categorias")
+@api.get("/bacterias/categorias")
 def bact_categorias():
     return _categorias(AGENT_DOMAINS["bacterias"])
 
 
-@app.get("/api/bacterias/patologias")
+@api.get("/bacterias/patologias")
 def bact_patologias(categoria_id: int = None):
     return _patologias(AGENT_DOMAINS["bacterias"], categoria_id)
 
 
-@app.get("/api/bacterias/patologia/{patologia_id}")
+@api.get("/bacterias/patologia/{patologia_id}")
 def bact_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["bacterias"], patologia_id)
 
 
-@app.get("/api/virais/categorias")
+@api.get("/virais/categorias")
 def virais_categorias():
     return _categorias(AGENT_DOMAINS["virais"])
 
 
-@app.get("/api/virais/patologias")
+@api.get("/virais/patologias")
 def virais_patologias(categoria_id: int = None):
     return _patologias(AGENT_DOMAINS["virais"], categoria_id)
 
 
-@app.get("/api/virais/patologia/{patologia_id}")
+@api.get("/virais/patologia/{patologia_id}")
 def virais_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["virais"], patologia_id)
 
 
-@app.get("/api/fungicos/categorias")
+@api.get("/fungicos/categorias")
 def fungicos_categorias():
     return _categorias(AGENT_DOMAINS["fungicos"])
 
 
-@app.get("/api/fungicos/patologias")
+@api.get("/fungicos/patologias")
 def fungicos_patologias(categoria_id: int = None):
     return _patologias(AGENT_DOMAINS["fungicos"], categoria_id)
 
 
-@app.get("/api/fungicos/patologia/{patologia_id}")
+@api.get("/fungicos/patologia/{patologia_id}")
 def fungicos_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["fungicos"], patologia_id)
 
 
-@app.get("/api/parasitos/categorias")
+@api.get("/parasitos/categorias")
 def parasitos_categorias():
     return _categorias(AGENT_DOMAINS["parasitos"])
 
 
-@app.get("/api/parasitos/patologias")
+@api.get("/parasitos/patologias")
 def parasitos_patologias(categoria_id: int = None):
     return _patologias(AGENT_DOMAINS["parasitos"], categoria_id)
 
 
-@app.get("/api/parasitos/patologia/{patologia_id}")
+@api.get("/parasitos/patologia/{patologia_id}")
 def parasitos_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["parasitos"], patologia_id)
 
@@ -701,7 +710,7 @@ def parasitos_detalhe(patologia_id: int):
 # PATOLOGIAS CRÔNICAS – endpoints
 # ══════════════════════════════════════════════════════════════════════════
 
-@app.get("/api/cronicas/categorias")
+@api.get("/cronicas/categorias")
 def cronicas_categorias():
     if "cronicas:categorias" not in _cache:
         with conn_bact() as db:
@@ -712,7 +721,7 @@ def cronicas_categorias():
     return _cache["cronicas:categorias"]
 
 
-@app.get("/api/cronicas/patologias")
+@api.get("/cronicas/patologias")
 def cronicas_patologias(categoria_id: int = None):
     key = f"cronicas:patologias:{categoria_id}"
     if key not in _cache:
@@ -735,7 +744,7 @@ def cronicas_patologias(categoria_id: int = None):
     return _cache[key]
 
 
-@app.get("/api/cronicas/patologia/{patologia_id}")
+@api.get("/cronicas/patologia/{patologia_id}")
 def cronicas_detalhe(patologia_id: int):
     """Detalhe de patologia crônica.
 
@@ -908,6 +917,8 @@ def cronicas_detalhe(patologia_id: int):
     _cache[cache_key] = result
     return result
 
+
+app.include_router(api)
 
 # ── static (deve ser o último mount) ───────────────────────────────────────
 # Catch-all de arquivos estáticos (patologias.html, bacterias.html, chart.umd.min.js).

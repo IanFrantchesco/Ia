@@ -51,6 +51,26 @@ def test_limiter_presente():
     assert hasattr(app_module, "limiter")
 
 
+def test_rotas_de_dados_agrupadas_sob_api_router():
+    # Preparação para auth/tier futuros: todas as 15 rotas de dados devem estar
+    # sob um único APIRouter com prefixo /api, para que protegê-las vire uma
+    # linha (`dependencies=[...]`) em vez de editar cada rota.
+    api_paths = {r.path for r in app_module.api.routes}
+    assert app_module.api.prefix == "/api"
+    assert len(api_paths) == 15
+    assert all(p.startswith("/api/") for p in api_paths)
+
+
+def test_saude_e_raiz_fora_do_api_router(client):
+    # "/" e "/health" precisam continuar acessíveis sem passar pelo router de
+    # dados: "/" é a porta de entrada; "/health" é o healthcheck do Railway, que
+    # não pode ficar atrás de uma futura autenticação.
+    api_paths = {r.path for r in app_module.api.routes}
+    assert "/" not in api_paths
+    assert "/health" not in api_paths
+    assert client.get("/health").status_code == 200
+
+
 @pytest.mark.parametrize("rota", list(AGENT_DOMINIOS))
 def test_categorias(client, rota):
     r = client.get(f"/api/{rota}/categorias")

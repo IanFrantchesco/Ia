@@ -15,6 +15,7 @@ etiológico). Os dados vêm de um único SQLite read-only, montado no build por
 import logging
 import re
 import sqlite3
+import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -139,27 +140,32 @@ async def add_security_headers(request, call_next):
 
 
 class _BoundedCache(dict):
-    """``dict`` com teto de tamanho.
+    """``dict`` com teto de tamanho, seguro sob concorrência.
 
     Ao inserir uma chave nova com o cache cheio, descarta a entrada mais antiga
     (``dict`` preserva a ordem de inserção). Evita crescimento indefinido de
     memória sob uso amplo. Todas as gravações ``_cache[k] = v`` já existentes
-    passam por aqui — nenhum call site muda. A evicção é *best-effort*: sob o
-    threadpool do FastAPI, uma corrida apenas pula a evicção (o pior caso é o
-    cache exceder o teto por pouco, temporariamente), nunca corrompe.
+    passam por aqui — nenhum call site muda.
+
+    As rotas ``def`` do FastAPI rodam no threadpool (até 40 threads), todas
+    escrevendo neste objeto. O ``check-then-act`` (checar tamanho → evictar →
+    inserir) roda sob um ``Lock``, tornando-o atômico: sem corrida na evicção
+    (nada de ``RuntimeError``/``KeyError`` a engolir) e o teto é respeitado com
+    exatidão. A seção crítica são poucas operações de ``dict`` (~µs), então a
+    contenção é desprezível frente ao tempo das queries. As leituras
+    (``k in cache``, ``cache[k]``) não precisam do lock — são atômicas sob o GIL.
     """
 
     def __init__(self, max_size):
         super().__init__()
         self._max = max_size
+        self._lock = threading.Lock()
 
     def __setitem__(self, key, value):
-        if key not in self and len(self) >= self._max:
-            try:
+        with self._lock:
+            if key not in self and len(self) >= self._max:
                 dict.__delitem__(self, next(iter(self)))
-            except Exception:
-                pass
-        dict.__setitem__(self, key, value)
+            dict.__setitem__(self, key, value)
 
 
 _cache = _BoundedCache(max_size=2048)

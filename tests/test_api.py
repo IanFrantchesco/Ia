@@ -117,6 +117,19 @@ def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
 
 
+@pytest.mark.parametrize("url", ["/docs", "/redoc", "/openapi.json"])
+def test_docs_publicas_desabilitadas(client, url):
+    # Redução de superfície (API9): a documentação/schema não devem estar públicos.
+    assert client.get(url).status_code == 404
+
+
+def test_app_funciona_sem_docs(client):
+    # Desabilitar as docs não afeta a aplicação em si.
+    assert client.get("/").status_code == 200
+    assert client.get("/health").status_code == 200
+    assert client.get("/api/bacterias/categorias").status_code == 200
+
+
 def test_erro_inesperado_nao_vaza_detalhe(monkeypatch):
     # Um erro não tratado deve responder 500 genérico, sem vazar detalhe interno
     # (o stack trace/senha vai só para o log do servidor).

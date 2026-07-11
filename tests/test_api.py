@@ -117,6 +117,25 @@ def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
 
 
+def test_listagem_nao_infla_cache_por_categoria_id(client):
+    # Fix API4: iterar categoria_id (controlado pelo cliente) não deve criar uma
+    # entrada de cache por valor — a chave agora é fixa por domínio.
+    before = len(app_module._cache)
+    for cid in range(900000, 900050):
+        assert client.get(f"/api/bacterias/patologias?categoria_id={cid}").status_code == 200
+    # no máximo 1 entrada nova (a listagem completa de bacterias), nunca 50
+    assert len(app_module._cache) - before <= 1
+
+
+def test_listagem_filtra_por_categoria_sem_vazar_fk(client):
+    # O filtro por categoria continua funcionando e o FK interno não vaza.
+    todas = client.get("/api/bacterias/patologias").json()
+    assert todas and all("categoria_id" not in p for p in todas)
+    cid = client.get("/api/bacterias/categorias").json()[0]["id"]
+    filtradas = client.get(f"/api/bacterias/patologias?categoria_id={cid}").json()
+    assert len(filtradas) <= len(todas)
+
+
 @pytest.mark.parametrize("url", ["/", "/health", "/api/bacterias/categorias"])
 def test_headers_de_seguranca(client, url):
     h = client.get(url).headers

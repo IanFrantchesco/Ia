@@ -179,6 +179,17 @@ def test_cache_limitado():
     assert len(c) == 3 and c["k9"] == 99
 
 
+def test_agentdomain_valida_identificadores_sql():
+    # Blindagem de injeção: identificadores interpolados em SQL devem casar com
+    # [a-z0-9_]; um valor fora do padrão falha na construção (no boot), não em runtime.
+    with pytest.raises(ValueError):
+        app_module.AgentDomain(junction="patologia; DROP TABLE x")
+    with pytest.raises(ValueError):
+        app_module.AgentDomain(agent_cols=("nome", "col invalida"))
+    # identificadores válidos não levantam
+    app_module.AgentDomain(junction="patologia_bacteria", agent_cols=("nome_cientifico",))
+
+
 def test_conn_bact_e_read_only():
     # A conexão de patologias permite leitura, mas rejeita escrita (query_only).
     with app_module.conn_bact() as db:

@@ -219,15 +219,43 @@ api = APIRouter(prefix="/api")
 # ══════════════════════════════════════════════════════════════════════════
 
 
+# Identificadores de tabela/coluna válidos: só letras minúsculas, dígitos e "_".
+_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+# Campos de AgentDomain que são interpolados como IDENTIFICADORES em SQL (nomes
+# de tabela/coluna via f-string). São validados na construção contra _IDENT_RE.
+_SQL_IDENT_FIELDS = frozenset({
+    "junction", "agent_table", "agent_fk",
+    "drug_table", "drug_class_table", "drug_fk",
+    "efficacy_table", "treatment_table", "treatment_principal",
+    "posology_table", "interactions_table", "agent_out_key",
+})
+
+
 class AgentDomain:
     """Configuração de um domínio de patologia baseada em agente etiológico.
 
-    Todos os identificadores aqui são constantes confiáveis (nunca entrada
-    do usuário), portanto sua interpolação em SQL via f-string é segura.
+    Todos os identificadores aqui são constantes confiáveis (nunca entrada do
+    usuário), portanto sua interpolação em SQL via f-string é segura. Para
+    transformar essa disciplina em **garantia de código** (o código vai crescer),
+    o ``__init__`` valida na construção que cada identificador interpolado em SQL
+    casa com ``_IDENT_RE`` — um valor fora do padrão faz o app **falhar no boot**,
+    não em runtime.
     """
 
     def __init__(self, **kw):
         self.__dict__.update(kw)
+        for field in _SQL_IDENT_FIELDS:
+            val = kw.get(field)
+            if val is not None and not _IDENT_RE.match(val):
+                raise ValueError(
+                    f"AgentDomain: identificador SQL inválido em {field!r}: {val!r}"
+                )
+        for col in kw.get("agent_cols", ()):
+            if not _IDENT_RE.match(col):
+                raise ValueError(
+                    f"AgentDomain: coluna inválida em agent_cols: {col!r}"
+                )
 
 
 AGENT_DOMAINS = {

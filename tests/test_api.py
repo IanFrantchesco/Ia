@@ -117,6 +117,25 @@ def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
 
 
+def test_erro_inesperado_nao_vaza_detalhe(monkeypatch):
+    # Um erro não tratado deve responder 500 genérico, sem vazar detalhe interno
+    # (o stack trace/senha vai só para o log do servidor).
+    from fastapi.testclient import TestClient
+
+    def boom(cfg):
+        raise RuntimeError("segredo interno: senha=abc123")
+
+    monkeypatch.setattr(app_module, "_categorias", boom)
+    with TestClient(app_module.app, raise_server_exceptions=False) as c:
+        r = c.get("/api/bacterias/categorias")
+    assert r.status_code == 500
+    assert r.json() == {"detail": "Erro interno do servidor"}
+    corpo = r.text
+    assert "abc123" not in corpo
+    assert "RuntimeError" not in corpo
+    assert "Traceback" not in corpo
+
+
 def test_listagem_nao_infla_cache_por_categoria_id(client):
     # Fix API4: iterar categoria_id (controlado pelo cliente) não deve criar uma
     # entrada de cache por valor — a chave agora é fixa por domínio.

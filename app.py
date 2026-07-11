@@ -21,7 +21,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -76,6 +76,17 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+# ── Handler global de erros inesperados ──────────────────────────────────────
+# Garante que uma exceção não tratada NUNCA vaze detalhe interno/stack trace ao
+# cliente: o detalhe completo vai só para o log do servidor; o cliente recebe um
+# 500 genérico. Não intercepta HTTPException (404/422) nem o 429 do slowapi —
+# esses são tipos distintos e seguem pelos handlers próprios.
+@app.exception_handler(Exception)
+async def handle_unexpected(request, exc):
+    log.exception("Erro não tratado em %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Erro interno do servidor"})
 
 # ── Headers de segurança ─────────────────────────────────────────────────────
 # Cabeçalhos HTTP de hardening aplicados a toda resposta. A CSP é "pragmática":

@@ -211,6 +211,35 @@ def test_cache_limitado():
     assert len(c) == 3 and c["k9"] == 99
 
 
+def test_cache_seguro_sob_concorrencia():
+    # 40 threads (o tamanho do threadpool do FastAPI) martelam o cache ao mesmo
+    # tempo: nenhuma exceção deve escapar e o teto deve ser respeitado (o Lock
+    # torna o check-then-act atômico).
+    import threading
+
+    c = app_module._BoundedCache(max_size=64)
+    errors = []
+    start = threading.Barrier(40)
+
+    def hammer(tid):
+        start.wait()  # largada simultânea, maximiza a corrida
+        for i in range(1500):
+            try:
+                c[f"k{tid}-{i}"] = tid  # chaves novas → evicção constante
+            except Exception as e:  # noqa: BLE001 — o teste é justamente pegar qualquer uma
+                errors.append(repr(e))
+
+    threads = [threading.Thread(target=hammer, args=(t,)) for t in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []          # nenhuma exceção escapou do __setitem__
+    assert len(c) <= 64          # teto respeitado, sem overage
+    assert len(c) == len(list(c.keys()))  # dict íntegro
+
+
 def test_agentdomain_valida_identificadores_sql():
     # Blindagem de injeção: identificadores interpolados em SQL devem casar com
     # [a-z0-9_]; um valor fora do padrão falha na construção (no boot), não em runtime.

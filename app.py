@@ -18,6 +18,7 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
@@ -350,11 +351,29 @@ async def add_request_id(request: Request, call_next):
     # roda fora desta pilha de middleware (ver comentário em handle_unexpected).
     request.state.request_id = request_id
     token = _request_id_ctx.set(request_id)
+    # time.monotonic (não time.time): relógio monotônico, imune a ajuste de
+    # horário do sistema durante a requisição.
+    start = time.monotonic()
     try:
         response = await call_next(request)
     finally:
         _request_id_ctx.reset(token)
+    duration_ms = round((time.monotonic() - start) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time-Ms"] = str(duration_ms)
+    # Access log estruturado (S31, escalabilidade): uma linha por requisição
+    # com latência + status, filtrável por campo no agregador (via o
+    # _JsonFormatter/_RequestIdFilter do S27). Dá base para os "golden signals"
+    # do SRE (latência, tráfego) e percentis de latência por endpoint.
+    # Caveat: o handler de Exception->500 (handle_unexpected) roda FORA desta
+    # pilha (caso especial do Starlette, ver S27), então um 500 não tratado não
+    # gera esta linha — mas já é logado à parte, com stack trace.
+    log.info(
+        "%s %s -> %d (%.2f ms)",
+        request.method, request.url.path, response.status_code, duration_ms,
+        extra={"method": request.method, "path": request.url.path,
+               "status_code": response.status_code, "duration_ms": duration_ms},
+    )
     return response
 
 

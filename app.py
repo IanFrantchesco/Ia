@@ -308,13 +308,15 @@ def health():
     return {"status": "ok", "patologias": n}
 
 
-# Agrupa as rotas de dados sob um único router com prefixo /api. Puramente
+# Agrupa as rotas de dados sob um único router com prefixo /api/v1. Puramente
 # estrutural (nenhuma lógica de autenticação hoje): quando a assinatura entrar,
 # proteger todos os dados vira uma linha (`dependencies=[Depends(auth)]` aqui),
 # em vez de editar cada rota. "/", "/health" e o mount de estáticos ficam DE
 # PROPÓSITO fora do router — precisam continuar acessíveis sem login (a tela de
 # entrada, e o healthcheck do Railway, que não pode ficar atrás de auth).
-api = APIRouter(prefix="/api")
+# O "/v1" é adicionado agora — única janela sem custo de fazer isso, antes de
+# haver qualquer consumidor externo da API (Richardson/REST maturity review).
+api = APIRouter(prefix="/api/v1")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -914,7 +916,7 @@ def bact_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["bacterias"], categoria_id)
 
 
-@api.get("/bacterias/patologia/{patologia_id}")
+@api.get("/bacterias/patologias/{patologia_id}")
 def bact_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["bacterias"], patologia_id)
 
@@ -929,7 +931,7 @@ def virais_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["virais"], categoria_id)
 
 
-@api.get("/virais/patologia/{patologia_id}")
+@api.get("/virais/patologias/{patologia_id}")
 def virais_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["virais"], patologia_id)
 
@@ -944,7 +946,7 @@ def fungicos_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["fungicos"], categoria_id)
 
 
-@api.get("/fungicos/patologia/{patologia_id}")
+@api.get("/fungicos/patologias/{patologia_id}")
 def fungicos_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["fungicos"], patologia_id)
 
@@ -959,7 +961,7 @@ def parasitos_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["parasitos"], categoria_id)
 
 
-@api.get("/parasitos/patologia/{patologia_id}")
+@api.get("/parasitos/patologias/{patologia_id}")
 def parasitos_detalhe(patologia_id: int):
     return _agent_detalhe(AGENT_DOMAINS["parasitos"], patologia_id)
 
@@ -1122,7 +1124,7 @@ def _build_card(
     )
 
 
-@api.get("/cronicas/patologia/{patologia_id}")
+@api.get("/cronicas/patologias/{patologia_id}")
 def cronicas_detalhe(patologia_id: int):
     """Detalhe de patologia crônica.
 

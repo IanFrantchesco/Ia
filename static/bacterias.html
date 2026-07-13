@@ -500,8 +500,8 @@ async function api(url) {
 // ── Bootstrap: load categories + pathologies ───────────────────────────
 (async () => {
   const [cats, pats] = await Promise.all([
-    api('/api/bacterias/categorias'),
-    api('/api/bacterias/patologias'),
+    api('/api/v1/bacterias/categorias'),
+    api('/api/v1/bacterias/patologias'),
   ]);
   window._allPats = pats;
 
@@ -537,7 +537,7 @@ document.getElementById('sel-categoria').addEventListener('change', function() {
     : window._allPats;
 
   if (catId) {
-    api(`/api/bacterias/patologias?categoria_id=${catId}`).then(populatePatologias);
+    api(`/api/v1/bacterias/patologias?categoria_id=${catId}`).then(populatePatologias);
   } else {
     populatePatologias(window._allPats);
   }
@@ -551,7 +551,7 @@ document.getElementById('sel-patologia').addEventListener('change', async functi
   if (!id) return;
   showLoading();
   try {
-    const data = await api(`/api/bacterias/patologia/${id}`);
+    const data = await api(`/api/v1/bacterias/patologias/${id}`);
     renderResult(data);
   } catch(e) {
     document.getElementById('result').innerHTML =

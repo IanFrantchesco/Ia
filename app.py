@@ -179,9 +179,20 @@ def _problem(status_code: int, detail: str, **extra) -> JSONResponse:
 
 @app.exception_handler(StarletteHTTPException)
 async def handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
-    """Reformata toda HTTPException (ex.: o 404 de `_fetch_patologia`) no envelope."""
+    """Reformata toda HTTPException (ex.: o 404 de `_fetch_patologia`) no envelope.
+
+    Loga em INFO (evento de negócio esperado, não uma falha do servidor) com
+    path/status_code como campos estruturados — antes, esses 404 eram
+    visíveis só na resposta HTTP em si, sem nenhuma linha própria de log
+    (Lens C: observabilidade).
+    """
     assert isinstance(exc, StarletteHTTPException)
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    log.info(
+        "%s %s -> %d %s",
+        request.method, request.url.path, exc.status_code, detail,
+        extra={"path": request.url.path, "status_code": exc.status_code},
+    )
     return _problem(exc.status_code, detail)
 
 
@@ -202,8 +213,18 @@ def handle_rate_limit(request: Request, exc: Exception) -> JSONResponse:
     registrado, cai de volta silenciosamente para o handler padrão do slowapi
     (verificado lendo ``slowapi.middleware.sync_check_limits`` — ela checa
     ``inspect.iscoroutinefunction`` e descarta handlers ``async``).
+
+    Loga em WARNING (diferente do 404: aqui é um sinal acionável de possível
+    abuso/scraping) com o IP do cliente e o path — antes, um 429 sistemático
+    contra um endpoint específico não deixava rastro nenhum além da resposta
+    HTTP em si (Lens C: observabilidade).
     """
     assert isinstance(exc, RateLimitExceeded)
+    log.warning(
+        "Rate limit excedido: %s %s (ip=%s)",
+        request.method, request.url.path, get_remote_address(request),
+        extra={"path": request.url.path, "client_ip": get_remote_address(request)},
+    )
     return _problem(429, str(exc.detail))
 
 

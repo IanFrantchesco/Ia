@@ -388,6 +388,45 @@ def test_logs_sao_json_estruturado(caplog):
     assert "request_id" in parsed
 
 
+def test_latencia_no_header_de_resposta(client):
+    # S31: toda resposta leva X-Response-Time-Ms com a latência em ms (numérico).
+    r = client.get("/api/v1/bacterias/categorias")
+    valor = r.headers.get("x-response-time-ms")
+    assert valor is not None
+    assert float(valor) >= 0
+
+
+def test_access_log_registra_duration_ms(client):
+    # S31 (golden signals do SRE): cada requisição gera uma linha de access log
+    # estruturada com duration_ms + method/path/status_code -- base para
+    # analisar latência/saturação por endpoint no agregador.
+    import logging
+
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture()
+    logging.getLogger("app").addHandler(handler)
+    try:
+        client.get("/api/v1/bacterias/categorias")
+    finally:
+        logging.getLogger("app").removeHandler(handler)
+
+    acessos = [
+        rec for rec in records
+        if getattr(rec, "duration_ms", None) is not None
+        and getattr(rec, "path", "") == "/api/v1/bacterias/categorias"
+    ]
+    assert acessos, "esperava uma linha de access log com duration_ms"
+    rec = acessos[-1]
+    assert isinstance(rec.duration_ms, float) and rec.duration_ms >= 0
+    assert rec.method == "GET"
+    assert rec.status_code == 200
+
+
 def test_listagem_nao_infla_cache_por_categoria_id(client):
     # Fix API4: iterar categoria_id (controlado pelo cliente) não deve criar uma
     # entrada de cache por valor — a chave agora é fixa por domínio.

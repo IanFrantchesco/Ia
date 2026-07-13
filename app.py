@@ -147,11 +147,25 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # ── Rate limiting (limite de requisições) ────────────────────────────────────
-# Limita cada visitante (identificado pelo IP) a 120 requisições por minuto.
-# Protege contra sobrecarga do servidor (DoS) e cópia em massa do banco
-# (scraping). O SlowAPIMiddleware aplica esse limite a TODAS as rotas
-# automaticamente — não é preciso decorar cada endpoint. Quem ultrapassa o
-# limite recebe a resposta HTTP 429 ("Too Many Requests") em vez dos dados.
+# Limita cada visitante (identificado pelo IP) a 120 requisições por minuto,
+# em todas as rotas, por padrão (o SlowAPIMiddleware aplica isso automaticamente
+# — não é preciso decorar cada endpoint). Protege contra sobrecarga do servidor
+# (DoS). Quem ultrapassa o limite recebe HTTP 429 em vez dos dados.
+#
+# S30 (OWASP API6 — Unrestricted Access to Sensitive Business Flows):
+# as rotas de LISTAGEM (`/categorias`, `/patologias`) devolvem o dataset
+# COMPLETO do domínio numa chamada só -- um fluxo mais sensível que o de
+# detalhe (um registro por vez) e que merece limite mais apertado, aplicado
+# via @limiter.limit(RATE_LIMIT_LISTAGEM) só nelas (sobrescreve o default
+# acima). Isso reduz scraping automatizado/repetido; NÃO impede uma cópia
+# única e deliberada do banco (~5-9 chamadas, uma por domínio, sempre abaixo
+# de qualquer limite razoável) -- isso só se resolve com autenticação, que
+# segue fora de escopo por decisão do produto. Limite por IP também não
+# impede um ataque distribuído (várias IPs) nem escala entre múltiplas
+# réplicas do processo (mesma limitação do _cache, já registrada na revisão
+# Twelve-Factor) -- trade-offs conhecidos, não bugs.
+RATE_LIMIT_LISTAGEM = "20/minute;500/day"
+
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
@@ -1085,12 +1099,14 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
 # ── rotas finas (uma linha cada) ────────────────────────────────────────────
 
 @api.get("/bacterias/categorias")
-def bact_categorias():
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def bact_categorias(request: Request):
     return _categorias(AGENT_DOMAINS["bacterias"])
 
 
 @api.get("/bacterias/patologias")
-def bact_patologias(categoria_id: int | None = None):
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def bact_patologias(request: Request, categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["bacterias"], categoria_id)
 
 
@@ -1100,12 +1116,14 @@ def bact_detalhe(patologia_id: int):
 
 
 @api.get("/virais/categorias")
-def virais_categorias():
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def virais_categorias(request: Request):
     return _categorias(AGENT_DOMAINS["virais"])
 
 
 @api.get("/virais/patologias")
-def virais_patologias(categoria_id: int | None = None):
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def virais_patologias(request: Request, categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["virais"], categoria_id)
 
 
@@ -1115,12 +1133,14 @@ def virais_detalhe(patologia_id: int):
 
 
 @api.get("/fungicos/categorias")
-def fungicos_categorias():
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def fungicos_categorias(request: Request):
     return _categorias(AGENT_DOMAINS["fungicos"])
 
 
 @api.get("/fungicos/patologias")
-def fungicos_patologias(categoria_id: int | None = None):
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def fungicos_patologias(request: Request, categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["fungicos"], categoria_id)
 
 
@@ -1130,12 +1150,14 @@ def fungicos_detalhe(patologia_id: int):
 
 
 @api.get("/parasitos/categorias")
-def parasitos_categorias():
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def parasitos_categorias(request: Request):
     return _categorias(AGENT_DOMAINS["parasitos"])
 
 
 @api.get("/parasitos/patologias")
-def parasitos_patologias(categoria_id: int | None = None):
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def parasitos_patologias(request: Request, categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["parasitos"], categoria_id)
 
 
@@ -1149,7 +1171,8 @@ def parasitos_detalhe(patologia_id: int):
 # ══════════════════════════════════════════════════════════════════════════
 
 @api.get("/cronicas/categorias")
-def cronicas_categorias():
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def cronicas_categorias(request: Request):
     return _categorias_lista(
         "cronicas:categorias",
         "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome",
@@ -1157,7 +1180,8 @@ def cronicas_categorias():
 
 
 @api.get("/cronicas/patologias")
-def cronicas_patologias(categoria_id: int | None = None):
+@limiter.limit(RATE_LIMIT_LISTAGEM)
+def cronicas_patologias(request: Request, categoria_id: int | None = None):
     sql = """
         SELECT DISTINCT p.id, p.categoria_id, p.nome, p.cid10, p.prevalencia_br,
                p.mortalidade_br, p.notificacao_compulsoria, p.tipo_notificacao,

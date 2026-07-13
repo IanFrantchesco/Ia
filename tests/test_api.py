@@ -228,15 +228,18 @@ def test_erro_422_usa_envelope_rfc9457(client):
 
 def test_erro_429_usa_envelope_rfc9457():
     # Precisa de um TestClient próprio com o limiter ligado (a fixture global
-    # desliga o limiter para não atrapalhar os outros testes).
+    # desliga o limiter para não atrapalhar os outros testes). Usa uma rota de
+    # DETALHE (não de listagem) para exercitar o limite genérico de 120/min --
+    # desde o S30, rotas de listagem têm um limite próprio, mais apertado
+    # (ver test_rate_limit_listagem_mais_restrito_que_detalhe).
     from fastapi.testclient import TestClient
 
     app_module.limiter.enabled = True
     try:
         with TestClient(app_module.app, raise_server_exceptions=False) as c:
-            codigos = [c.get("/api/v1/bacterias/categorias").status_code for _ in range(125)]
+            codigos = [c.get("/api/v1/bacterias/patologias/1").status_code for _ in range(125)]
             assert 429 in codigos, "limite de 120/min não disparou em 125 tentativas"
-            r = c.get("/api/v1/bacterias/categorias")
+            r = c.get("/api/v1/bacterias/patologias/1")
             assert r.status_code == 429
             body = r.json()
             assert _ENVELOPE_KEYS <= body.keys()
@@ -341,6 +344,34 @@ def test_429_gera_log_warning_com_ip_e_path():
     assert warns, "esperava ao menos um log WARNING de rate limit excedido"
     assert warns[0].path == "/api/v1/bacterias/categorias"
     assert warns[0].client_ip
+
+
+def test_rate_limit_listagem_mais_restrito_que_detalhe():
+    # S30 (OWASP API6): rotas de listagem devolvem o dataset completo do
+    # domínio numa chamada só -- fluxo mais sensível que o de detalhe (um
+    # registro por vez) -- e por isso levam um limite bem mais apertado
+    # (RATE_LIMIT_LISTAGEM = "20/minute;500/day") em vez do default de
+    # 120/minute. Usa o domínio "fungicos", não usado por nenhum outro teste
+    # de rate limit, para não competir por contador com eles.
+    from fastapi.testclient import TestClient
+
+    app_module.limiter.enabled = True
+    try:
+        with TestClient(app_module.app, raise_server_exceptions=False) as c:
+            codigos_listagem = [
+                c.get("/api/v1/fungicos/categorias").status_code for _ in range(25)
+            ]
+            assert 429 in codigos_listagem, "limite de listagem não disparou em 25 tentativas"
+            assert codigos_listagem.count(200) <= 20
+
+            codigos_detalhe = [
+                c.get("/api/v1/fungicos/patologias/1").status_code for _ in range(25)
+            ]
+            assert 429 not in codigos_detalhe, (
+                "rota de detalhe não deveria esgotar em só 25 tentativas (limite é 120/min)"
+            )
+    finally:
+        app_module.limiter.enabled = False
 
 
 def test_logs_sao_json_estruturado(caplog):

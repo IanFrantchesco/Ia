@@ -296,7 +296,29 @@ class AgentDomain:
     o ``__init__`` valida na construção que cada identificador interpolado em SQL
     casa com ``_IDENT_RE`` — um valor fora do padrão faz o app **falhar no boot**,
     não em runtime.
+
+    Os atributos são anotados no corpo da classe (sem valor) só para o mypy
+    enxergá-los — quem de fato os define é ``__dict__.update(kw)`` no ``__init__``;
+    isso não muda nenhum comportamento em runtime.
     """
+
+    dominio: str
+    route: str
+    junction: str
+    agent_table: str
+    agent_fk: str
+    agent_cols: tuple[str, ...]
+    drug_table: str
+    drug_class_table: str
+    drug_fk: str
+    efficacy_table: str
+    treatment_table: str
+    treatment_principal: str
+    posology_table: str
+    interactions_table: str
+    agent_out_key: str
+    categorias_filtered: bool
+    extra_agent_key: str | None
 
     def __init__(self, **kw):
         self.__dict__.update(kw)
@@ -364,7 +386,7 @@ AGENT_DOMAINS = {
 
 # ── helpers compartilhados (usados também pelo domínio crônico) ──────────────
 
-def _fetch_patologia(db, patologia_id):
+def _fetch_patologia(db: sqlite3.Connection, patologia_id: int) -> sqlite3.Row:
     """Cabeçalho da patologia; levanta 404 se não existir."""
     pat = db.execute(
         """SELECT p.id, p.nome, p.cid10, p.descricao,
@@ -383,7 +405,9 @@ def _fetch_patologia(db, patologia_id):
     return pat
 
 
-def _fetch_clinical(db, patologia_id):
+def _fetch_clinical(
+    db: sqlite3.Connection, patologia_id: int
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Sintomas, critérios diagnósticos e escores — idênticos em todo domínio."""
     sintomas = db.execute(
         """SELECT s.nome, s.sistema, s.tipo,
@@ -417,7 +441,7 @@ def _fetch_clinical(db, patologia_id):
 
 # ── listagem e categorias (genéricas) ───────────────────────────────────────
 
-def _categorias(cfg):
+def _categorias(cfg: "AgentDomain") -> list[dict]:
     """Categorias (sistemas corporais) do domínio.
 
     ``categorias_filtered=True`` (viral, fúngico) restringe às categorias que
@@ -440,7 +464,7 @@ def _categorias(cfg):
     return _cache[key]
 
 
-def _patologias(cfg, categoria_id):
+def _patologias(cfg: "AgentDomain", categoria_id: int | None) -> list[dict]:
     """Lista as patologias do domínio, opcionalmente filtradas por categoria.
 
     O cache é indexado por uma chave **fixa por domínio** (a listagem completa),
@@ -472,7 +496,7 @@ def _patologias(cfg, categoria_id):
 
 # ── detalhe (genérico) ──────────────────────────────────────────────────────
 
-def _agent_detalhe(cfg, patologia_id):
+def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
     """Detalhe completo de uma patologia por agente etiológico.
 
     Os "top 3 medicamentos" seguem uma estratégia em três níveis, do dado mais
@@ -558,7 +582,7 @@ def _agent_detalhe(cfg, patologia_id):
             (patologia_id,),
         ).fetchone()
 
-        def _pos_int_single(aid):
+        def _pos_int_single(aid: int) -> tuple[list[dict], list[dict]]:
             pos = [dict(r) for r in db.execute(
                 f"""SELECT po.populacao, po.dose_unitaria, po.frequencia, po.via,
                            po.duracao_min_dias, po.duracao_max_dias, po.duracao_texto,
@@ -678,7 +702,7 @@ def _agent_detalhe(cfg, patologia_id):
                 d = dict(row)
                 interacoes_by_id[d.pop(cfg.drug_fk)].append(d)
 
-        def enrich(r):
+        def enrich(r: sqlite3.Row) -> dict:
             """Monta o card de um medicamento real, com o radar normalizado 0–100.
 
             ``resistencia_br_pct`` e ``eficacia_pct`` distinguem None (dado clínico
@@ -747,7 +771,7 @@ def bact_categorias():
 
 
 @api.get("/bacterias/patologias")
-def bact_patologias(categoria_id: int = None):
+def bact_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["bacterias"], categoria_id)
 
 
@@ -762,7 +786,7 @@ def virais_categorias():
 
 
 @api.get("/virais/patologias")
-def virais_patologias(categoria_id: int = None):
+def virais_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["virais"], categoria_id)
 
 
@@ -777,7 +801,7 @@ def fungicos_categorias():
 
 
 @api.get("/fungicos/patologias")
-def fungicos_patologias(categoria_id: int = None):
+def fungicos_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["fungicos"], categoria_id)
 
 
@@ -792,7 +816,7 @@ def parasitos_categorias():
 
 
 @api.get("/parasitos/patologias")
-def parasitos_patologias(categoria_id: int = None):
+def parasitos_patologias(categoria_id: int | None = None):
     return _patologias(AGENT_DOMAINS["parasitos"], categoria_id)
 
 
@@ -817,7 +841,7 @@ def cronicas_categorias():
 
 
 @api.get("/cronicas/patologias")
-def cronicas_patologias(categoria_id: int = None):
+def cronicas_patologias(categoria_id: int | None = None):
     # Mesma correção de _patologias: chave de cache fixa + filtro em memória, para
     # não permitir inflar o cache com categoria_id controlado pelo cliente.
     key = "cronicas:patologias"
@@ -859,7 +883,7 @@ def cronicas_detalhe(patologia_id: int):
     # nível de evidência são eixos distintos, ainda que a escala coincida aqui.
     GRAU_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
 
-    def _extract_first_drug(text: str) -> str | None:
+    def _extract_first_drug(text: str | None) -> str | None:
         """Extrai o nome do fármaco de um texto que pode conter dose e combinações."""
         if not text:
             return None
@@ -869,7 +893,7 @@ def cronicas_detalhe(patologia_id: int):
         name = re.split(r"\s+\d|\s+\(", part)[0].strip()
         return name or None
 
-    def _lookup_med(db, nome_raw):
+    def _lookup_med(db: sqlite3.Connection, nome_raw: str | None) -> sqlite3.Row | None:
         """Busca em cascata na tabela ``medicamentos``: exata → case-insensitive → prefixo."""
         if not nome_raw:
             return None
@@ -892,7 +916,15 @@ def cronicas_detalhe(patologia_id: int):
                 return row
         return None
 
-    def _build_card(db, nome_raw, role_label, tratamento, grau_score, patologia_id, linha):
+    def _build_card(
+        db: sqlite3.Connection,
+        nome_raw: str | None,
+        role_label: str,
+        tratamento: sqlite3.Row,
+        grau_score: dict[str, int],
+        patologia_id: int,
+        linha: int,
+    ) -> dict | None:
         """Monta um card de medicamento para patologia crônica; None se ``nome_raw`` vazio."""
         nome_clean = _extract_first_drug(nome_raw)
         if not nome_clean:

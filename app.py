@@ -103,7 +103,12 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 # limite recebe a resposta HTTP 429 ("Too Many Requests") em vez dos dados.
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(
+    RateLimitExceeded, _rate_limit_exceeded_handler  # type: ignore[arg-type]
+)  # incompatibilidade de tipagem conhecida entre o stub do Starlette (espera
+   # handler para Exception genérica) e o handler do slowapi (tipado para
+   # RateLimitExceeded); comportamento em runtime correto — Python não impõe
+   # os tipos, e o FastAPI despacha por tipo de exceção registrado.
 app.add_middleware(SlowAPIMiddleware)
 
 

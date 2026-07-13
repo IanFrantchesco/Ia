@@ -18,6 +18,7 @@ import sqlite3
 import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -292,19 +293,22 @@ _SQL_IDENT_FIELDS = frozenset({
 })
 
 
+@dataclass
 class AgentDomain:
     """Configuração de um domínio de patologia baseada em agente etiológico.
 
     Todos os identificadores aqui são constantes confiáveis (nunca entrada do
     usuário), portanto sua interpolação em SQL via f-string é segura. Para
     transformar essa disciplina em **garantia de código** (o código vai crescer),
-    o ``__init__`` valida na construção que cada identificador interpolado em SQL
-    casa com ``_IDENT_RE`` — um valor fora do padrão faz o app **falhar no boot**,
-    não em runtime.
+    ``__post_init__`` valida na construção que cada identificador interpolado em
+    SQL casa com ``_IDENT_RE`` — um valor fora do padrão faz o app **falhar no
+    boot**, não em runtime.
 
-    Os atributos são anotados no corpo da classe (sem valor) só para o mypy
-    enxergá-los — quem de fato os define é ``__dict__.update(kw)`` no ``__init__``;
-    isso não muda nenhum comportamento em runtime.
+    É um ``@dataclass`` (não uma classe com ``__dict__.update(kw)`` manual) de
+    propósito: o ``__init__`` gerado é *typed* e todos os campos são obrigatórios,
+    então o mypy valida cada chamada ``AgentDomain(...)`` em ``AGENT_DOMAINS`` —
+    um campo esquecido ou com tipo errado num domínio novo vira erro no mypy, não
+    só um `AttributeError` em runtime.
     """
 
     dominio: str
@@ -325,15 +329,14 @@ class AgentDomain:
     categorias_filtered: bool
     extra_agent_key: str | None
 
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-        for field in _SQL_IDENT_FIELDS:
-            val = kw.get(field)
+    def __post_init__(self):
+        for field_name in _SQL_IDENT_FIELDS:
+            val = getattr(self, field_name)
             if val is not None and not _IDENT_RE.match(val):
                 raise ValueError(
-                    f"AgentDomain: identificador SQL inválido em {field!r}: {val!r}"
+                    f"AgentDomain: identificador SQL inválido em {field_name!r}: {val!r}"
                 )
-        for col in kw.get("agent_cols", ()):
+        for col in self.agent_cols:
             if not _IDENT_RE.match(col):
                 raise ValueError(
                     f"AgentDomain: coluna inválida em agent_cols: {col!r}"
@@ -737,6 +740,10 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                 "fonte":              r["fonte"],
                 "fonte_nome":         r["fonte_nome"],
                 "fonte_ano":          r["fonte_ano"],
+                # Explícito (não omitido) para paridade com os cards sintéticos e
+                # os de patologia crônica, que sempre definem esta chave — a forma
+                # do card fica a mesma em todos os caminhos que o produzem.
+                "is_fallback":        False,
                 "radar": {
                     "eficacia":       None if r["eficacia_pct"] is None else round(r["eficacia_pct"], 1),
                     "seguranca":      None if seg is None else round(seg, 1),

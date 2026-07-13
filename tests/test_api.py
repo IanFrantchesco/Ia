@@ -300,6 +300,49 @@ def test_request_id_presente_e_correlacionado_em_erro_500(monkeypatch, caplog):
     assert erros[0].request_id == request_id
 
 
+def test_404_gera_log_info_com_contexto(client, caplog):
+    # Antes do S28, um 404 não deixava rastro nenhum além da resposta HTTP em
+    # si -- não dava para saber, só olhando o log, que alguém bateu num
+    # recurso inexistente.
+    with caplog.at_level("INFO"):
+        client.get("/api/v1/bacterias/patologias/99999999")
+    logs = [
+        rec for rec in caplog.records
+        if rec.name == "app" and getattr(rec, "status_code", None) == 404
+    ]
+    assert logs, "esperava um log para o 404"
+    assert logs[0].path == "/api/v1/bacterias/patologias/99999999"
+
+
+def test_429_gera_log_warning_com_ip_e_path():
+    # Idem para o 429: hoje é o único sinal de possível abuso/scraping, e
+    # antes não deixava rastro algum no log do servidor.
+    from fastapi.testclient import TestClient
+    import logging
+
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture()
+    logging.getLogger("app").addHandler(handler)
+    app_module.limiter.enabled = True
+    try:
+        with TestClient(app_module.app, raise_server_exceptions=False) as c:
+            for _ in range(125):
+                c.get("/api/v1/bacterias/categorias")
+    finally:
+        app_module.limiter.enabled = False
+        logging.getLogger("app").removeHandler(handler)
+
+    warns = [rec for rec in records if rec.levelname == "WARNING"]
+    assert warns, "esperava ao menos um log WARNING de rate limit excedido"
+    assert warns[0].path == "/api/v1/bacterias/categorias"
+    assert warns[0].client_ip
+
+
 def test_logs_sao_json_estruturado(caplog):
     # Log em texto livre não é filtrável por campo num agregador; JSON permite
     # (ex.: filtrar por request_id). Basta confirmar que o record carrega o

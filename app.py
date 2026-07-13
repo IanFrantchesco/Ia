@@ -13,12 +13,15 @@ etiológico). Os dados vêm de um único SQLite read-only, montado no build por
 """
 
 import http
+import json
 import logging
 import re
 import sqlite3
 import threading
+import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,10 +36,54 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+# ── Logging estruturado (JSON) + correlação por requisição ──────────────────
+# Texto livre (formato antigo) não é pesquisável por um agregador de log sem
+# parsing por regex — não dá para filtrar "todo 404 em /bacterias na última
+# hora" sem processar string. JSON estruturado (um objeto por linha) permite
+# filtrar/agrupar por campo direto na plataforma de logs (Railway). O
+# request_id (gerado por requisição no middleware ``add_request_id`` abaixo)
+# entra em TODO log record via o ``_RequestIdFilter``, sem precisar passar o
+# valor manualmente em cada chamada de log — inclusive nos handlers de erro
+# já existentes (S13/S24), que não precisaram mudar.
+_request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+class _RequestIdFilter(logging.Filter):
+    """Injeta o request_id da requisição atual (via contextvar) em todo log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = _request_id_ctx.get()
+        return True
+
+
+class _JsonFormatter(logging.Formatter):
+    """Formata cada log record como um objeto JSON (uma linha por evento).
+
+    Qualquer campo extra passado via ``extra={...}`` num call site de log (ex.:
+    domínio, patologia_id) entra automaticamente no JSON — não precisa mudar o
+    formatter a cada novo campo, só o call site.
+    """
+
+    _CAMPOS_PADRAO = frozenset(vars(logging.makeLogRecord({})))
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        extras = {k: v for k, v in record.__dict__.items() if k not in self._CAMPOS_PADRAO}
+        payload.update(extras)
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(_JsonFormatter())
+_log_handler.addFilter(_RequestIdFilter())
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler])
 log = logging.getLogger(__name__)
 
 APP_VERSION  = "1.0.0"
@@ -167,8 +214,26 @@ def handle_rate_limit(request: Request, exc: Exception) -> JSONResponse:
 # distintos e seguem pelos handlers específicos acima.
 @app.exception_handler(Exception)
 async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
+    # O Starlette trata um handler para `Exception` (a classe-base) como caso
+    # especial: ele vira o handler do ServerErrorMiddleware, o mais EXTERNO de
+    # toda a pilha — fora até do add_request_id. Duas consequências, ambas
+    # verificadas empiricamente:
+    #   1. quando a exceção atravessa o `finally` de add_request_id, o
+    #      contextvar do request_id já foi resetado ao valor default antes
+    #      deste handler rodar (sem o re-set abaixo, o log sempre mostrava
+    #      request_id="-"). request.state sobrevive a esse reset (não é
+    #      contextvar), então é a fonte confiável aqui.
+    #   2. a resposta que este handler retorna nunca passa de volta por
+    #      add_request_id (a exceção "pulou" esse middleware) — o header
+    #      X-Request-ID precisa ser posto na própria resposta aqui, ou o
+    #      cliente nunca o recebe justamente no único caso (erro real) em que
+    #      ele mais importa.
+    request_id = getattr(request.state, "request_id", "-")
+    _request_id_ctx.set(request_id)
     log.exception("Erro não tratado em %s %s", request.method, request.url.path)
-    return _problem(500, "Erro interno do servidor")
+    response = _problem(500, "Erro interno do servidor")
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # ── Headers de segurança ─────────────────────────────────────────────────────
 # Cabeçalhos HTTP de hardening aplicados a toda resposta. A CSP é "pragmática":
@@ -229,6 +294,32 @@ async def add_cache_control(request, call_next):
         and 200 <= response.status_code < 300
     ):
         response.headers.setdefault("Cache-Control", CACHE_CONTROL_DADOS)
+    return response
+
+
+# ── Correlação por requisição (request ID) ───────────────────────────────────
+# Sem um identificador por requisição, duas chamadas concorrentes ao mesmo
+# endpoint produzem linhas de log indistinguíveis — não dá para juntar as
+# linhas de uma mesma requisição nem apontar o cliente para "qual log olhar"
+# quando ele reporta um erro. Registrado por ÚLTIMO entre os middlewares
+# ``@app.middleware("http")`` de propósito: no Starlette, o último decorado
+# vira o mais EXTERNO da pilha — este precisa envolver TODOS os outros
+# (headers de segurança, cache-control, rate limit) para que o contextvar já
+# esteja setado antes de qualquer um deles rodar, e o header X-Request-ID só
+# seja escrito depois que a resposta final estiver pronta.
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:12]
+    # Também fica em request.state (não é contextvar — sobrevive ao reset do
+    # `finally` abaixo): é a fonte usada pelo handler de erro inesperado, que
+    # roda fora desta pilha de middleware (ver comentário em handle_unexpected).
+    request.state.request_id = request_id
+    token = _request_id_ctx.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        _request_id_ctx.reset(token)
+    response.headers["X-Request-ID"] = request_id
     return response
 
 

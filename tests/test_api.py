@@ -257,6 +257,63 @@ def test_erros_compartilham_o_mesmo_envelope(client):
     assert {k: r404.json()[k] for k in ("type",)} == {k: r422.json()[k] for k in ("type",)}
 
 
+def test_request_id_presente_e_unico(client):
+    # Toda resposta leva um X-Request-ID (correlação de log por requisição);
+    # duas chamadas distintas nunca compartilham o mesmo valor.
+    r1 = client.get("/api/v1/bacterias/categorias")
+    r2 = client.get("/api/v1/bacterias/categorias")
+    id1, id2 = r1.headers.get("x-request-id"), r2.headers.get("x-request-id")
+    assert id1 and id2
+    assert id1 != id2
+
+
+def test_request_id_presente_em_erro_404_e_422(client):
+    # Também precisa aparecer nas respostas de erro "normais" (que passam pelo
+    # ExceptionMiddleware, dentro da pilha de middleware).
+    assert client.get("/api/v1/bacterias/patologias/99999999").headers.get("x-request-id")
+    assert client.get("/api/v1/bacterias/patologias/abc").headers.get("x-request-id")
+
+
+def test_request_id_presente_e_correlacionado_em_erro_500(monkeypatch, caplog):
+    # O handler de Exception (500) é um caso especial no Starlette: vira o
+    # handler do ServerErrorMiddleware, o mais externo de toda a pilha — fora
+    # até do middleware que gera o request_id. Sem o fix, essa resposta saía
+    # SEM o header (o middleware nunca via a resposta de volta) e o log dessa
+    # mesma requisição mostrava request_id="-" (o contextvar já tinha sido
+    # resetado antes do handler rodar). Este teste caracteriza os dois.
+    from fastapi.testclient import TestClient
+
+    def boom(cfg):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_module, "_categorias", boom)
+    with caplog.at_level("ERROR"):
+        with TestClient(app_module.app, raise_server_exceptions=False) as c:
+            r = c.get("/api/v1/bacterias/categorias")
+
+    assert r.status_code == 500
+    request_id = r.headers.get("x-request-id")
+    assert request_id
+
+    erros = [rec for rec in caplog.records if rec.name == "app" and rec.levelname == "ERROR"]
+    assert erros, "esperava um log ERROR para a exceção não tratada"
+    assert erros[0].request_id == request_id
+
+
+def test_logs_sao_json_estruturado(caplog):
+    # Log em texto livre não é filtrável por campo num agregador; JSON permite
+    # (ex.: filtrar por request_id). Basta confirmar que o record carrega o
+    # campo (o _JsonFormatter é o que efetivamente serializa em produção).
+    app_module.log.info("evento de teste")
+    ultimo = caplog.records[-1]
+    assert hasattr(ultimo, "request_id")
+    formatted = app_module._JsonFormatter().format(ultimo)
+    import json
+    parsed = json.loads(formatted)
+    assert parsed["message"] == "evento de teste"
+    assert "request_id" in parsed
+
+
 def test_listagem_nao_infla_cache_por_categoria_id(client):
     # Fix API4: iterar categoria_id (controlado pelo cliente) não deve criar uma
     # entrada de cache por valor — a chave agora é fixa por domínio.

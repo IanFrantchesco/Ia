@@ -494,6 +494,44 @@ def test_cache_seguro_sob_concorrencia():
     assert len(c) == len(list(c.keys()))  # dict íntegro
 
 
+def test_bounded_cache_conta_hits_e_misses():
+    # S29: __contains__ conta hit/miss -- todo call site já faz
+    # `if cache_key not in _cache` como primeira linha, então isso dá
+    # contagem exata sem mudar nenhum deles.
+    c = app_module._BoundedCache(max_size=10)
+    assert "x" not in c  # miss: ainda não existe
+    c["x"] = 1
+    assert "x" in c  # hit
+    assert "x" in c  # hit de novo
+    assert c.misses == 1
+    assert c.hits == 2
+
+
+def test_bounded_cache_setitem_nao_conta_como_hit_ou_miss():
+    # A checagem interna de evicção dentro de __setitem__ usa
+    # dict.__contains__ direto -- não deve inflar hits/misses (só a leitura
+    # feita pelo call site conta).
+    c = app_module._BoundedCache(max_size=10)
+    c["y"] = 1
+    assert c.hits == 0 and c.misses == 0
+    c["y"] = 2  # sobrescrita de chave existente
+    assert c.hits == 0 and c.misses == 0
+
+
+def test_health_expoe_estatisticas_de_cache(client):
+    # O _cache global já foi populado por outros testes na mesma sessão do
+    # client -- não dá para asserir valores exatos, só a FORMA da resposta.
+    client.get("/api/v1/bacterias/categorias")
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    cache_stats = body["cache"]
+    assert isinstance(cache_stats["size"], int) and cache_stats["size"] >= 0
+    assert isinstance(cache_stats["hits"], int)
+    assert isinstance(cache_stats["misses"], int)
+    assert cache_stats["hits"] + cache_stats["misses"] > 0
+    assert cache_stats["hit_rate_pct"] is None or isinstance(cache_stats["hit_rate_pct"], (int, float))
+
+
 def _agentdomain_kwargs(**overrides):
     # AgentDomain é @dataclass com todos os campos obrigatórios (S20) -- monta um
     # conjunto completo e válido, sobrescrevendo só o(s) campo(s) sob teste.

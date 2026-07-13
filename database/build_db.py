@@ -1620,6 +1620,11 @@ def build():
     print(f"  → {inserted} critérios inseridos, {skipped} patologias não encontradas")
 
     print_summary(conn)
+    # Checkpoint TRUNCATE: transfere todo o WAL de volta ao arquivo principal e
+    # esvazia o -wal. Deixa o artefato auto-contido (todo o dado no .sqlite), o
+    # que o torna mais limpo para embarcar e seguro caso um dia seja servido de
+    # um filesystem read-only (onde o -wal pendente não poderia ser reconciliado).
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     conn.close()
     print(f"Banco criado em: {DB_PATH}")
     return DB_PATH

@@ -48,7 +48,12 @@ async def lifespan(app: FastAPI):
     inicializada — por ora, apenas confirma a presença do banco read-only.
     """
     if DB_BACT_PATH.exists():
-        log.info("DB ok: %s", DB_BACT_PATH.name)
+        # Loga o journal_mode REAL de produção: confirma se o banco abriu em WAL
+        # (filesystem gravável) ou caiu para outro modo (ex.: 'delete' num FS
+        # read-only). Definitivo para diagnosticar concorrência em produção.
+        with conn_bact() as db:
+            modo = db.execute("PRAGMA journal_mode").fetchone()[0]
+        log.info("DB ok: %s (journal_mode=%s)", DB_BACT_PATH.name, modo)
     else:
         log.error("DB não encontrado: %s", DB_BACT_PATH)
     yield
@@ -182,16 +187,17 @@ LINHA_SCORE     = {1: 100, 2: 60, 3: 30}
 def _connect(db_path, *, read_only=True):
     """Abre uma conexão SQLite configurada e a fecha ao sair do bloco.
 
-    WAL + busy_timeout permitem leituras concorrentes sem travar enquanto o
-    build reescreve o arquivo; ``row_factory=Row`` dá acesso às colunas por nome.
-    Quando ``read_only`` (padrão), aplica ``PRAGMA query_only=ON``, que impede
-    qualquer escrita acidental — reforço para o banco de patologias, que é só de
-    leitura. O parâmetro prevê o futuro banco de clientes: esse será read-write
-    (num Volume persistente) e abrirá com ``read_only=False``.
+    O ``journal_mode`` NÃO é setado aqui: WAL é persistente no header do arquivo
+    (definido uma única vez em ``build_db.py``), então cada conexão apenas o herda.
+    ``busy_timeout`` dá tolerância a lock momentâneo; ``row_factory=Row`` dá acesso
+    às colunas por nome. Quando ``read_only`` (padrão), aplica ``PRAGMA
+    query_only=ON``, que impede qualquer escrita acidental — reforço para o banco
+    de patologias, que é só de leitura. O parâmetro prevê o futuro banco de
+    clientes: esse será read-write (num Volume persistente) e abrirá com
+    ``read_only=False``.
     """
     db = sqlite3.connect(db_path, timeout=10)
     db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA busy_timeout=5000")
     if read_only:
         db.execute("PRAGMA query_only=ON")

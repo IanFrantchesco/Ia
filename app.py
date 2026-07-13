@@ -875,6 +875,137 @@ def cronicas_patologias(categoria_id: int | None = None):
     return [{k: v for k, v in p.items() if k != "categoria_id"} for p in filtradas]
 
 
+def _extract_first_drug(text: str | None) -> str | None:
+    """Extrai o nome do fármaco de um texto que pode conter dose e combinações.
+
+    Função de módulo (promovida de dentro de ``cronicas_detalhe`` no S21): é
+    pura — não usa banco nem nenhum estado externo — então já era testável
+    isoladamente; só estava aninhada por convenção, sem necessidade real.
+    """
+    if not text:
+        return None
+    # Só o primeiro fármaco, antes de qualquer separador + / &
+    part = re.split(r"\s*[+/&]\s*", text)[0].strip()
+    # Remove a informação de dose ao final (dígito ou parêntese)
+    name = re.split(r"\s+\d|\s+\(", part)[0].strip()
+    return name or None
+
+
+def _lookup_med(db: sqlite3.Connection, nome_raw: str | None) -> sqlite3.Row | None:
+    """Busca em cascata na tabela ``medicamentos``: exata → case-insensitive → prefixo.
+
+    Função de módulo (promovida no S21): já recebia ``db`` como parâmetro —
+    não capturava nenhum estado do escopo de ``cronicas_detalhe``.
+    """
+    if not nome_raw:
+        return None
+    for query, param in [
+        ("WHERE m.nome_generico = ?", nome_raw),
+        ("WHERE LOWER(m.nome_generico) = LOWER(?)", nome_raw),
+        ("WHERE LOWER(m.nome_generico) LIKE LOWER(?) LIMIT 1",
+         nome_raw.split()[0].lower() + "%"),
+    ]:
+        row = db.execute(
+            f"""SELECT m.id, m.nome_generico, m.nome_comercial,
+                       m.via_administracao, m.disponivel_sus,
+                       cm.nome AS classe
+                FROM medicamentos m
+                LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
+                {query}""",
+            (param,),
+        ).fetchone()
+        if row:
+            return row
+    return None
+
+
+def _build_card(
+    db: sqlite3.Connection,
+    nome_raw: str | None,
+    role_label: str,
+    tratamento: sqlite3.Row,
+    grau_score: dict[str, int],
+    patologia_id: int,
+    linha: int,
+) -> dict | None:
+    """Monta um card de medicamento para patologia crônica; None se ``nome_raw`` vazio.
+
+    Função de módulo (promovida no S21): assim como ``_lookup_med``, já recebia
+    toda dependência (``db``, ``tratamento``, ``grau_score``...) como parâmetro.
+    """
+    nome_clean = _extract_first_drug(nome_raw)
+    if not nome_clean:
+        return None
+    med_row = _lookup_med(db, nome_clean)
+
+    radar = {
+        "evidencia":    EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25),
+        "recomendacao": grau_score.get(tratamento["grau_recomendacao"] or "D", 25),
+        "acesso_sus":   100 if (med_row and med_row["disponivel_sus"]) else 0,
+    }
+
+    posologias, interacoes = [], []
+    if med_row:
+        mid = med_row["id"]
+        posologias = [
+            {k: v for k, v in dict(r).items() if k != "medicamento_id"}
+            for r in db.execute(
+                """SELECT po.medicamento_id, po.populacao, po.dose_unitaria,
+                          po.frequencia, po.via, po.duracao_texto,
+                          po.ajuste_renal, po.ajuste_hepatico,
+                          po.meta_terapeutica, po.observacoes,
+                          fo.sigla AS fonte
+                   FROM posologia_cronica po
+                   LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
+                   WHERE po.medicamento_id = ?
+                     AND (po.patologia_id = ? OR po.patologia_id IS NULL)
+                   ORDER BY po.patologia_id DESC, po.populacao""",
+                (mid, patologia_id),
+            ).fetchall()
+        ]
+        interacoes = [
+            {k: v for k, v in dict(r).items() if k != "medicamento_id"}
+            for r in db.execute(
+                """SELECT i.medicamento_id, i.medicamento_interagente,
+                          i.classe_interagente, i.mecanismo, i.gravidade,
+                          i.efeito_clinico, i.conduta, fo.sigla AS fonte
+                   FROM interacoes_medicamentos i
+                   LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
+                   WHERE i.medicamento_id = ?
+                   ORDER BY CASE i.gravidade
+                     WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
+                     WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
+                (mid,),
+            ).fetchall()
+        ]
+
+    # Sem posologia estruturada: usa o texto do regime para a aba não ficar vazia
+    if not posologias and tratamento["regime_resumido"]:
+        posologias = [{"regime_texto": tratamento["regime_resumido"]}]
+
+    return {
+        "nome_generico":      med_row["nome_generico"] if med_row else nome_clean,
+        "nome_comercial":     med_row["nome_comercial"] if med_row else None,
+        "via":                med_row["via_administracao"] if med_row else None,
+        "disponivel_sus":     bool(med_row["disponivel_sus"]) if med_row else False,
+        "classe":             med_row["classe"] if med_row else None,
+        "agente":             None,
+        "eficacia_pct":       None,
+        "linha_tratamento":   linha,
+        "nivel_evidencia":    tratamento["nivel_evidencia"],
+        "resistencia_br_pct": None,
+        "consideracoes":      tratamento["regime_resumido"] if linha == 1 else nome_raw,
+        "role_label":         role_label,
+        "fonte":              tratamento["fonte_sigla"],
+        "fonte_nome":         tratamento["fonte_nome"],
+        "fonte_ano":          None,
+        "is_fallback":        med_row is None,
+        "radar":              radar,
+        "posologias":         posologias,
+        "interacoes":         interacoes,
+    }
+
+
 @api.get("/cronicas/patologia/{patologia_id}")
 def cronicas_detalhe(patologia_id: int):
     """Detalhe de patologia crônica.
@@ -894,121 +1025,6 @@ def cronicas_detalhe(patologia_id: int):
     # GRAU_SCORE espelha EVIDENCIA_SCORE de propósito: grau de recomendação e
     # nível de evidência são eixos distintos, ainda que a escala coincida aqui.
     GRAU_SCORE = {"A": 100, "B": 75, "C": 50, "D": 25}
-
-    def _extract_first_drug(text: str | None) -> str | None:
-        """Extrai o nome do fármaco de um texto que pode conter dose e combinações."""
-        if not text:
-            return None
-        # Só o primeiro fármaco, antes de qualquer separador + / &
-        part = re.split(r"\s*[+/&]\s*", text)[0].strip()
-        # Remove a informação de dose ao final (dígito ou parêntese)
-        name = re.split(r"\s+\d|\s+\(", part)[0].strip()
-        return name or None
-
-    def _lookup_med(db: sqlite3.Connection, nome_raw: str | None) -> sqlite3.Row | None:
-        """Busca em cascata na tabela ``medicamentos``: exata → case-insensitive → prefixo."""
-        if not nome_raw:
-            return None
-        for query, param in [
-            ("WHERE m.nome_generico = ?", nome_raw),
-            ("WHERE LOWER(m.nome_generico) = LOWER(?)", nome_raw),
-            ("WHERE LOWER(m.nome_generico) LIKE LOWER(?) LIMIT 1",
-             nome_raw.split()[0].lower() + "%"),
-        ]:
-            row = db.execute(
-                f"""SELECT m.id, m.nome_generico, m.nome_comercial,
-                           m.via_administracao, m.disponivel_sus,
-                           cm.nome AS classe
-                    FROM medicamentos m
-                    LEFT JOIN classes_medicamentos cm ON cm.id = m.classe_id
-                    {query}""",
-                (param,),
-            ).fetchone()
-            if row:
-                return row
-        return None
-
-    def _build_card(
-        db: sqlite3.Connection,
-        nome_raw: str | None,
-        role_label: str,
-        tratamento: sqlite3.Row,
-        grau_score: dict[str, int],
-        patologia_id: int,
-        linha: int,
-    ) -> dict | None:
-        """Monta um card de medicamento para patologia crônica; None se ``nome_raw`` vazio."""
-        nome_clean = _extract_first_drug(nome_raw)
-        if not nome_clean:
-            return None
-        med_row = _lookup_med(db, nome_clean)
-
-        radar = {
-            "evidencia":    EVIDENCIA_SCORE.get(tratamento["nivel_evidencia"] or "D", 25),
-            "recomendacao": grau_score.get(tratamento["grau_recomendacao"] or "D", 25),
-            "acesso_sus":   100 if (med_row and med_row["disponivel_sus"]) else 0,
-        }
-
-        posologias, interacoes = [], []
-        if med_row:
-            mid = med_row["id"]
-            posologias = [
-                {k: v for k, v in dict(r).items() if k != "medicamento_id"}
-                for r in db.execute(
-                    """SELECT po.medicamento_id, po.populacao, po.dose_unitaria,
-                              po.frequencia, po.via, po.duracao_texto,
-                              po.ajuste_renal, po.ajuste_hepatico,
-                              po.meta_terapeutica, po.observacoes,
-                              fo.sigla AS fonte
-                       FROM posologia_cronica po
-                       LEFT JOIN fontes_oficiais fo ON fo.id = po.fonte_id
-                       WHERE po.medicamento_id = ?
-                         AND (po.patologia_id = ? OR po.patologia_id IS NULL)
-                       ORDER BY po.patologia_id DESC, po.populacao""",
-                    (mid, patologia_id),
-                ).fetchall()
-            ]
-            interacoes = [
-                {k: v for k, v in dict(r).items() if k != "medicamento_id"}
-                for r in db.execute(
-                    """SELECT i.medicamento_id, i.medicamento_interagente,
-                              i.classe_interagente, i.mecanismo, i.gravidade,
-                              i.efeito_clinico, i.conduta, fo.sigla AS fonte
-                       FROM interacoes_medicamentos i
-                       LEFT JOIN fontes_oficiais fo ON fo.id = i.fonte_id
-                       WHERE i.medicamento_id = ?
-                       ORDER BY CASE i.gravidade
-                         WHEN 'contraindicada' THEN 1 WHEN 'grave' THEN 2
-                         WHEN 'moderada' THEN 3 WHEN 'leve' THEN 4 END""",
-                    (mid,),
-                ).fetchall()
-            ]
-
-        # Sem posologia estruturada: usa o texto do regime para a aba não ficar vazia
-        if not posologias and tratamento["regime_resumido"]:
-            posologias = [{"regime_texto": tratamento["regime_resumido"]}]
-
-        return {
-            "nome_generico":      med_row["nome_generico"] if med_row else nome_clean,
-            "nome_comercial":     med_row["nome_comercial"] if med_row else None,
-            "via":                med_row["via_administracao"] if med_row else None,
-            "disponivel_sus":     bool(med_row["disponivel_sus"]) if med_row else False,
-            "classe":             med_row["classe"] if med_row else None,
-            "agente":             None,
-            "eficacia_pct":       None,
-            "linha_tratamento":   linha,
-            "nivel_evidencia":    tratamento["nivel_evidencia"],
-            "resistencia_br_pct": None,
-            "consideracoes":      tratamento["regime_resumido"] if linha == 1 else nome_raw,
-            "role_label":         role_label,
-            "fonte":              tratamento["fonte_sigla"],
-            "fonte_nome":         tratamento["fonte_nome"],
-            "fonte_ano":          None,
-            "is_fallback":        med_row is None,
-            "radar":              radar,
-            "posologias":         posologias,
-            "interacoes":         interacoes,
-        }
 
     with conn_bact() as db:
         pat = _fetch_patologia(db, patologia_id)

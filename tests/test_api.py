@@ -332,3 +332,51 @@ def test_conn_bact_e_read_only():
         assert db.execute("SELECT COUNT(*) FROM patologias").fetchone()[0] > 0
         with pytest.raises(sqlite3.OperationalError):
             db.execute("CREATE TABLE _proibido (x)")
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Metformina 500mg", "Metformina"),
+    ("Metformina + Sitagliptina", "Metformina"),
+    ("Losartana/Hidroclorotiazida", "Losartana"),
+    ("Enalapril & Anlodipino", "Enalapril"),
+    ("Amoxicilina (500mg 8/8h)", "Amoxicilina"),
+    ("  Ibuprofeno  ", "Ibuprofeno"),
+    (None, None),
+    ("", None),
+    ("   ", None),
+])
+def test_extract_first_drug(texto, esperado):
+    # S21: _extract_first_drug foi promovida de dentro de cronicas_detalhe para
+    # função de módulo -- é pura (sem banco/estado externo), então já era
+    # testável isoladamente; só estava aninhada por convenção. Cobre os casos
+    # de combinação (+, /, &), dose numérica, dose entre parênteses e vazio/None.
+    assert app_module._extract_first_drug(texto) == esperado
+
+
+def test_lookup_med_none_e_vazio():
+    # _lookup_med recebe db como parâmetro (nunca capturou nada por closure) --
+    # promovida no S21. nome_raw None/vazio retorna None sem tocar o banco.
+    with app_module.conn_bact() as db:
+        assert app_module._lookup_med(db, None) is None
+        assert app_module._lookup_med(db, "") is None
+
+
+def test_lookup_med_cascata_no_banco_real():
+    with app_module.conn_bact() as db:
+        nome_real = db.execute("SELECT nome_generico FROM medicamentos LIMIT 1").fetchone()[0]
+
+        # nome exato
+        r = app_module._lookup_med(db, nome_real)
+        assert r is not None and r["nome_generico"] == nome_real
+
+        # case-insensitive
+        r = app_module._lookup_med(db, nome_real.upper())
+        assert r is not None and r["nome_generico"] == nome_real
+
+        # prefixo (primeira palavra + "%")
+        prefixo = nome_real.split()[0][: max(1, len(nome_real.split()[0]) - 1)]
+        r = app_module._lookup_med(db, prefixo)
+        assert r is not None
+
+        # inexistente
+        assert app_module._lookup_med(db, "medicamento-que-nao-existe-xyz") is None

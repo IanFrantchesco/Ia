@@ -192,11 +192,69 @@ def test_erro_inesperado_nao_vaza_detalhe(monkeypatch):
     with TestClient(app_module.app, raise_server_exceptions=False) as c:
         r = c.get("/api/bacterias/categorias")
     assert r.status_code == 500
-    assert r.json() == {"detail": "Erro interno do servidor"}
+    # S24: envelope RFC 9457 (type/title/status/detail) -- mesma garantia de
+    # segurança do S13, só a forma da resposta mudou.
+    body = r.json()
+    assert body["status"] == 500
+    assert body["detail"] == "Erro interno do servidor"
     corpo = r.text
     assert "abc123" not in corpo
     assert "RuntimeError" not in corpo
     assert "Traceback" not in corpo
+
+
+_ENVELOPE_KEYS = {"type", "title", "status", "detail"}
+
+
+def test_erro_404_usa_envelope_rfc9457(client):
+    r = client.get("/api/bacterias/patologia/99999999")
+    assert r.status_code == 404
+    body = r.json()
+    assert _ENVELOPE_KEYS <= body.keys()
+    assert body["status"] == 404
+    assert body["detail"] == "Patologia não encontrada"
+    assert r.headers["content-type"] == "application/problem+json"
+
+
+def test_erro_422_usa_envelope_rfc9457(client):
+    r = client.get("/api/bacterias/patologia/abc")
+    assert r.status_code == 422
+    body = r.json()
+    assert _ENVELOPE_KEYS <= body.keys()
+    assert body["status"] == 422
+    # a lista de erros do Pydantic vira campo de extensão, nao o detail em si
+    assert isinstance(body["errors"], list) and body["errors"]
+
+
+def test_erro_429_usa_envelope_rfc9457():
+    # Precisa de um TestClient próprio com o limiter ligado (a fixture global
+    # desliga o limiter para não atrapalhar os outros testes).
+    from fastapi.testclient import TestClient
+
+    app_module.limiter.enabled = True
+    try:
+        with TestClient(app_module.app, raise_server_exceptions=False) as c:
+            codigos = [c.get("/api/bacterias/categorias").status_code for _ in range(125)]
+            assert 429 in codigos, "limite de 120/min não disparou em 125 tentativas"
+            r = c.get("/api/bacterias/categorias")
+            assert r.status_code == 429
+            body = r.json()
+            assert _ENVELOPE_KEYS <= body.keys()
+            assert body["status"] == 429
+    finally:
+        app_module.limiter.enabled = False
+
+
+def test_erros_compartilham_o_mesmo_envelope(client):
+    # O ponto central do S24: 404/422/500 (e o 429, testado à parte) devem ter
+    # exatamente o mesmo CONJUNTO de chaves de topo -- antes, cada um tinha uma
+    # forma diferente ({"detail": str} vs {"detail": [...]} vs {"error": str}).
+    r404 = client.get("/api/bacterias/patologia/99999999")
+    r422 = client.get("/api/bacterias/patologia/abc")
+    assert set(r404.json().keys()) >= _ENVELOPE_KEYS
+    assert set(r422.json().keys()) >= _ENVELOPE_KEYS
+    # ambos concordam nas 4 chaves-base (extensões como "errors" podem variar)
+    assert {k: r404.json()[k] for k in ("type",)} == {k: r422.json()[k] for k in ("type",)}
 
 
 def test_listagem_nao_infla_cache_por_categoria_id(client):

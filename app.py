@@ -12,6 +12,7 @@ etiológico). Os dados vêm de um único SQLite read-only, montado no build por
 ``database/build_db.py``; respostas de listagem são memoizadas em ``_cache``.
 """
 
+import http
 import logging
 import re
 import sqlite3
@@ -21,14 +22,16 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,24 +107,68 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 # limite recebe a resposta HTTP 429 ("Too Many Requests") em vez dos dados.
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app.state.limiter = limiter
-app.add_exception_handler(
-    RateLimitExceeded, _rate_limit_exceeded_handler  # type: ignore[arg-type]
-)  # incompatibilidade de tipagem conhecida entre o stub do Starlette (espera
-   # handler para Exception genérica) e o handler do slowapi (tipado para
-   # RateLimitExceeded); comportamento em runtime correto — Python não impõe
-   # os tipos, e o FastAPI despacha por tipo de exceção registrado.
 app.add_middleware(SlowAPIMiddleware)
+
+
+# ── Erros: envelope único (RFC 9457 — Problem Details for HTTP APIs) ────────
+# Antes, cada subsistema respondia erro num formato diferente: 404/500 usavam
+# {"detail": "string"}, 422 (validação do Pydantic) usava {"detail": [...]}
+# (uma LISTA de objetos), 429 (slowapi) usava {"error": "string"}, e o 503 do
+# /health usava {"status": "string"} — 3 formas distintas coexistindo. Um
+# cliente não conseguia escrever um único parser de erro genérico. RFC 9457
+# define um envelope padrão (type/title/status/detail) para *todo* erro HTTP;
+# aqui os handlers abaixo reformatam cada origem de erro nesse mesmo envelope,
+# sem mudar o comportamento em si (mesmos status codes de sempre).
+def _problem(status_code: int, detail: str, **extra) -> JSONResponse:
+    """Monta uma resposta de erro no formato RFC 9457 (application/problem+json)."""
+    try:
+        title = http.HTTPStatus(status_code).phrase
+    except ValueError:
+        title = "Erro"
+    body = {"type": "about:blank", "title": title, "status": status_code, "detail": detail}
+    body.update(extra)
+    return JSONResponse(status_code=status_code, content=body, media_type="application/problem+json")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Reformata toda HTTPException (ex.: o 404 de `_fetch_patologia`) no envelope."""
+    assert isinstance(exc, StarletteHTTPException)
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return _problem(exc.status_code, detail)
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
+    """Reformata erro de validação (422) no mesmo envelope; a lista de erros do
+    Pydantic vira um campo de extensão ``errors``, não o ``detail`` em si."""
+    assert isinstance(exc, RequestValidationError)
+    return _problem(422, "Um ou mais parâmetros são inválidos", errors=exc.errors())
+
+
+@app.exception_handler(RateLimitExceeded)
+def handle_rate_limit(request: Request, exc: Exception) -> JSONResponse:
+    """Reformata o 429 do slowapi no mesmo envelope.
+
+    Precisa ser SÍNCRONO (``def``, não ``async def``): o ``SlowAPIMiddleware``
+    roda numa parte síncrona do código e, ao ver um handler assíncrono
+    registrado, cai de volta silenciosamente para o handler padrão do slowapi
+    (verificado lendo ``slowapi.middleware.sync_check_limits`` — ela checa
+    ``inspect.iscoroutinefunction`` e descarta handlers ``async``).
+    """
+    assert isinstance(exc, RateLimitExceeded)
+    return _problem(429, str(exc.detail))
 
 
 # ── Handler global de erros inesperados ──────────────────────────────────────
 # Garante que uma exceção não tratada NUNCA vaze detalhe interno/stack trace ao
 # cliente: o detalhe completo vai só para o log do servidor; o cliente recebe um
-# 500 genérico. Não intercepta HTTPException (404/422) nem o 429 do slowapi —
-# esses são tipos distintos e seguem pelos handlers próprios.
+# 500 genérico. Não intercepta HTTPException/validação/429 — esses são tipos
+# distintos e seguem pelos handlers específicos acima.
 @app.exception_handler(Exception)
-async def handle_unexpected(request, exc):
+async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
     log.exception("Erro não tratado em %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "Erro interno do servidor"})
+    return _problem(500, "Erro interno do servidor")
 
 # ── Headers de segurança ─────────────────────────────────────────────────────
 # Cabeçalhos HTTP de hardening aplicados a toda resposta. A CSP é "pragmática":

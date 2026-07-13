@@ -218,6 +218,24 @@ def test_listagem_filtra_por_categoria_sem_vazar_fk(client):
     assert len(filtradas) <= len(todas)
 
 
+def test_cronicas_listagem_nao_infla_cache_por_categoria_id(client):
+    # S22: cronicas_patologias agora delega a _patologias_lista, o mesmo helper
+    # de bacterias/virais/etc -- confirma que a proteção do S11 (antes só
+    # testada para bacterias) vale igual para o domínio crônico.
+    before = len(app_module._cache)
+    for cid in range(900000, 900050):
+        assert client.get(f"/api/cronicas/patologias?categoria_id={cid}").status_code == 200
+    assert len(app_module._cache) - before <= 1
+
+
+def test_cronicas_listagem_filtra_por_categoria_sem_vazar_fk(client):
+    todas = client.get("/api/cronicas/patologias").json()
+    assert todas and all("categoria_id" not in p for p in todas)
+    cid = client.get("/api/cronicas/categorias").json()[0]["id"]
+    filtradas = client.get(f"/api/cronicas/patologias?categoria_id={cid}").json()
+    assert len(filtradas) <= len(todas)
+
+
 @pytest.mark.parametrize("url", ["/", "/health", "/api/bacterias/categorias"])
 def test_headers_de_seguranca(client, url):
     h = client.get(url).headers

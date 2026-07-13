@@ -449,6 +449,45 @@ def _fetch_clinical(
 
 # ── listagem e categorias (genéricas) ───────────────────────────────────────
 
+def _categorias_lista(cache_key: str, sql: str) -> list[dict]:
+    """Executa ``sql`` (sem parâmetros) e cacheia o resultado sob ``cache_key``.
+
+    Compartilhado entre ``_categorias`` (domínios por agente) e
+    ``cronicas_categorias`` — extraído no S22 porque a query "sem filtro" de
+    crônicas era byte-idêntica ao branch ``categorias_filtered=False`` de
+    ``_categorias``; a duplicação não era uma divergência de domínio real.
+    """
+    if cache_key not in _cache:
+        with conn_bact() as db:
+            rows = db.execute(sql).fetchall()
+        _cache[cache_key] = [dict(r) for r in rows]
+    return _cache[cache_key]
+
+
+def _patologias_lista(cache_key: str, sql: str, categoria_id: int | None) -> list[dict]:
+    """Executa ``sql`` (que seleciona ``p.categoria_id``), cacheia por
+    ``cache_key`` **sem** o ``categoria_id`` do cliente na chave, filtra em
+    memória e remove o FK interno da saída.
+
+    O cache é indexado por uma chave **fixa por domínio** (a listagem completa),
+    e o filtro por ``categoria_id`` é feito em memória. Antes, a chave incluía
+    ``categoria_id`` — controlado pelo cliente —, o que permitia inflar o cache
+    com entradas-lixo (categorias inexistentes cacheavam ``[]``) e evictar as
+    entradas legítimas (S11). Compartilhado entre ``_patologias`` (domínios por
+    agente) e ``cronicas_patologias`` — essa correção de segurança estava
+    copiada quase linha a linha nos dois lugares; extraída no S22 para que uma
+    futura correção só precise ser feita uma vez.
+    """
+    if cache_key not in _cache:
+        with conn_bact() as db:
+            rows = db.execute(sql).fetchall()
+        _cache[cache_key] = [dict(r) for r in rows]
+    todas = _cache[cache_key]
+    filtradas = [p for p in todas if not categoria_id or p["categoria_id"] == categoria_id]
+    # remove o FK interno da resposta (mantém o contrato de saída idêntico)
+    return [{k: v for k, v in p.items() if k != "categoria_id"} for p in filtradas]
+
+
 def _categorias(cfg: "AgentDomain") -> list[dict]:
     """Categorias (sistemas corporais) do domínio.
 
@@ -456,50 +495,29 @@ def _categorias(cfg: "AgentDomain") -> list[dict]:
     de fato têm patologias no domínio; bacteriano e parasitário retornam todas
     por decisão histórica de produto.
     """
-    key = f"{cfg.route}:categorias"
-    if key not in _cache:
-        if cfg.categorias_filtered:
-            sql = f"""SELECT DISTINCT c.id, c.nome, c.sistema
-                      FROM categorias_patologias c
-                      JOIN patologias p ON p.categoria_id = c.id
-                      JOIN {cfg.junction} j ON j.patologia_id = p.id
-                      ORDER BY c.nome"""
-        else:
-            sql = "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
-        with conn_bact() as db:
-            rows = db.execute(sql).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    return _cache[key]
+    if cfg.categorias_filtered:
+        sql = f"""SELECT DISTINCT c.id, c.nome, c.sistema
+                  FROM categorias_patologias c
+                  JOIN patologias p ON p.categoria_id = c.id
+                  JOIN {cfg.junction} j ON j.patologia_id = p.id
+                  ORDER BY c.nome"""
+    else:
+        sql = "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
+    return _categorias_lista(f"{cfg.route}:categorias", sql)
 
 
 def _patologias(cfg: "AgentDomain", categoria_id: int | None) -> list[dict]:
-    """Lista as patologias do domínio, opcionalmente filtradas por categoria.
-
-    O cache é indexado por uma chave **fixa por domínio** (a listagem completa),
-    e o filtro por ``categoria_id`` é feito em memória. Antes, a chave incluía
-    ``categoria_id`` — controlado pelo cliente —, o que permitia inflar o cache
-    com entradas-lixo (categorias inexistentes cacheavam ``[]``) e evictar as
-    entradas legítimas. Filtrar ~350 linhas em memória é trivial.
+    """Lista as patologias do domínio, opcionalmente filtradas por categoria."""
+    sql = f"""
+        SELECT DISTINCT p.id, p.categoria_id, p.nome, p.cid10, p.prevalencia_br,
+               p.mortalidade_br, p.notificacao_compulsoria, p.tipo_notificacao,
+               c.nome AS categoria
+        FROM patologias p
+        JOIN categorias_patologias c ON c.id = p.categoria_id
+        JOIN {cfg.junction} j ON j.patologia_id = p.id
+        ORDER BY p.nome
     """
-    key = f"{cfg.route}:patologias"
-    if key not in _cache:
-        # inclui p.categoria_id apenas para o filtro em memória (removido da saída)
-        sql = f"""
-            SELECT DISTINCT p.id, p.categoria_id, p.nome, p.cid10, p.prevalencia_br,
-                   p.mortalidade_br, p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN {cfg.junction} j ON j.patologia_id = p.id
-            ORDER BY p.nome
-        """
-        with conn_bact() as db:
-            rows = db.execute(sql).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    todas = _cache[key]
-    filtradas = [p for p in todas if not categoria_id or p["categoria_id"] == categoria_id]
-    # remove o FK interno da resposta (mantém o contrato de saída idêntico)
-    return [{k: v for k, v in p.items() if k != "categoria_id"} for p in filtradas]
+    return _patologias_lista(f"{cfg.route}:patologias", sql, categoria_id)
 
 
 # ── detalhe (genérico) ──────────────────────────────────────────────────────
@@ -843,36 +861,24 @@ def parasitos_detalhe(patologia_id: int):
 
 @api.get("/cronicas/categorias")
 def cronicas_categorias():
-    if "cronicas:categorias" not in _cache:
-        with conn_bact() as db:
-            rows = db.execute(
-                "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome"
-            ).fetchall()
-        _cache["cronicas:categorias"] = [dict(r) for r in rows]
-    return _cache["cronicas:categorias"]
+    return _categorias_lista(
+        "cronicas:categorias",
+        "SELECT id, nome, sistema FROM categorias_patologias ORDER BY nome",
+    )
 
 
 @api.get("/cronicas/patologias")
 def cronicas_patologias(categoria_id: int | None = None):
-    # Mesma correção de _patologias: chave de cache fixa + filtro em memória, para
-    # não permitir inflar o cache com categoria_id controlado pelo cliente.
-    key = "cronicas:patologias"
-    if key not in _cache:
-        sql = """
-            SELECT DISTINCT p.id, p.categoria_id, p.nome, p.cid10, p.prevalencia_br,
-                   p.mortalidade_br, p.notificacao_compulsoria, p.tipo_notificacao,
-                   c.nome AS categoria
-            FROM patologias p
-            JOIN categorias_patologias c ON c.id = p.categoria_id
-            JOIN tratamento_padrao_ouro_cronico tpc ON tpc.patologia_id = p.id
-            ORDER BY p.nome
-        """
-        with conn_bact() as db:
-            rows = db.execute(sql).fetchall()
-        _cache[key] = [dict(r) for r in rows]
-    todas = _cache[key]
-    filtradas = [p for p in todas if not categoria_id or p["categoria_id"] == categoria_id]
-    return [{k: v for k, v in p.items() if k != "categoria_id"} for p in filtradas]
+    sql = """
+        SELECT DISTINCT p.id, p.categoria_id, p.nome, p.cid10, p.prevalencia_br,
+               p.mortalidade_br, p.notificacao_compulsoria, p.tipo_notificacao,
+               c.nome AS categoria
+        FROM patologias p
+        JOIN categorias_patologias c ON c.id = p.categoria_id
+        JOIN tratamento_padrao_ouro_cronico tpc ON tpc.patologia_id = p.id
+        ORDER BY p.nome
+    """
+    return _patologias_lista("cronicas:patologias", sql, categoria_id)
 
 
 def _extract_first_drug(text: str | None) -> str | None:

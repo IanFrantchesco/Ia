@@ -364,16 +364,39 @@ class _BoundedCache(dict):
     exatidão. A seção crítica são poucas operações de ``dict`` (~µs), então a
     contenção é desprezível frente ao tempo das queries. As leituras
     (``k in cache``, ``cache[k]``) não precisam do lock — são atômicas sob o GIL.
+
+    ``hits``/``misses`` (S29, Lens C: observabilidade) contam acerto/erro do
+    cache via ``__contains__`` — todo call site de leitura já faz
+    ``if cache_key not in _cache: ...`` como primeira linha, então a contagem
+    fica exata sem mudar nenhum deles. Os incrementos NÃO usam o lock, de
+    propósito: mesma lógica de "leitura não precisa de lock" já documentada
+    acima, para um contador auxiliar de observabilidade, não crítico para
+    correção (sob concorrência real, ``+=1`` pode raramente subcontar — trade-
+    off aceitável, no mesmo espírito pragmático de outras decisões já tomadas
+    no projeto, como o Cache-Control de 1h e a CSP com ``unsafe-inline``).
     """
 
     def __init__(self, max_size):
         super().__init__()
         self._max = max_size
         self._lock = threading.Lock()
+        self.hits = 0
+        self.misses = 0
+
+    def __contains__(self, key):
+        presente = super().__contains__(key)
+        if presente:
+            self.hits += 1
+        else:
+            self.misses += 1
+        return presente
 
     def __setitem__(self, key, value):
         with self._lock:
-            if key not in self and len(self) >= self._max:
+            # dict.__contains__ direto (não `key not in self`): evita que essa
+            # checagem interna de evicção conte como hit/miss — só a leitura
+            # feita pelo call site (`if cache_key not in _cache`) deve contar.
+            if not dict.__contains__(self, key) and len(self) >= self._max:
                 dict.__delitem__(self, next(iter(self)))
             dict.__setitem__(self, key, value)
 
@@ -444,7 +467,23 @@ def health():
         return JSONResponse(status_code=503, content={"status": "error"})
     if n == 0:  # abre mas está vazio → build do banco falhou
         return JSONResponse(status_code=503, content={"status": "degraded", "patologias": 0})
-    return {"status": "ok", "patologias": n}
+    # Estatísticas do _cache (S29, Lens C: observabilidade) só no caminho de
+    # sucesso -- mesmo princípio já usado no S24 para o formato de erro deste
+    # endpoint: os caminhos degradado/erro acima continuam exatamente como
+    # estão. Não é um endpoint /metrics novo (decisão do S14 de reduzir
+    # superfície de API); reaproveita o único endpoint operacional existente.
+    total = _cache.hits + _cache.misses
+    hit_rate = round(100 * _cache.hits / total, 1) if total else None
+    return {
+        "status": "ok",
+        "patologias": n,
+        "cache": {
+            "size": len(_cache),
+            "hits": _cache.hits,
+            "misses": _cache.misses,
+            "hit_rate_pct": hit_rate,
+        },
+    }
 
 
 # Agrupa as rotas de dados sob um único router com prefixo /api/v1. Puramente

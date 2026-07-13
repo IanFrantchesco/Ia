@@ -679,10 +679,18 @@ def _agent_detalhe(cfg, patologia_id):
                 interacoes_by_id[d.pop(cfg.drug_fk)].append(d)
 
         def enrich(r):
-            """Monta o card de um medicamento real, com o radar normalizado 0–100."""
+            """Monta o card de um medicamento real, com o radar normalizado 0–100.
+
+            ``resistencia_br_pct`` e ``eficacia_pct`` distinguem None (dado clínico
+            desconhecido) de 0.0 (medido como zero) — usar ``or 0`` aqui misturaria
+            os dois (ex.: resistência desconhecida viraria "segurança 100%"). O
+            radar propaga None; o frontend (Chart.js) já trata null como "sem
+            dado" (ponto pulado), sem renderizá-lo como zero.
+            """
             ev  = EVIDENCIA_SCORE.get(r["nivel_evidencia"] or "D", 25)
             ln  = LINHA_SCORE.get(r["linha_tratamento"] or 3, 30)
-            seg = max(0.0, 100.0 - (r["resistencia_br_pct"] or 0.0))
+            resistencia = r["resistencia_br_pct"]
+            seg = None if resistencia is None else max(0.0, 100.0 - resistencia)
             sus = 100 if r["disponivel_sus"] else 0
             aid = r[cfg.drug_fk]
             return {
@@ -701,8 +709,8 @@ def _agent_detalhe(cfg, patologia_id):
                 "fonte_nome":         r["fonte_nome"],
                 "fonte_ano":          r["fonte_ano"],
                 "radar": {
-                    "eficacia":       round(r["eficacia_pct"] or 0, 1),
-                    "seguranca":      round(seg, 1),
+                    "eficacia":       None if r["eficacia_pct"] is None else round(r["eficacia_pct"], 1),
+                    "seguranca":      None if seg is None else round(seg, 1),
                     "evidencia":      ev,
                     "primeira_linha": ln,
                     "acesso_sus":     sus,

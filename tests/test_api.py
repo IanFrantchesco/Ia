@@ -125,6 +125,29 @@ def test_cronicas(client):
         assert body["agentes"] == []
 
 
+def test_radar_distingue_none_de_zero(client):
+    # PEP8/idiom review: `campo or 0` misturava "desconhecido" (None) com "medido
+    # como zero" no radar dos cards REAIS (via enrich(), is_fallback=False). Varre
+    # os domínios de agente procurando um card assim com eficacia_pct/
+    # resistencia_br_pct None e confirma que o radar propaga None (não 0/100
+    # enganoso). Cards sintéticos (is_fallback=True) usam radar hardcoded por
+    # design (fora de escopo desta correção) e são ignorados aqui.
+    encontrou_algum = False
+    for rota in AGENT_DOMINIOS:
+        for pid in [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]:
+            det = client.get(f"/api/{rota}/patologia/{pid}").json()
+            for m in det["top3_medicamentos"]:
+                if m.get("is_fallback"):
+                    continue
+                if m.get("eficacia_pct") is None:
+                    assert m["radar"]["eficacia"] is None
+                    encontrou_algum = True
+                if m.get("resistencia_br_pct") is None:
+                    assert m["radar"]["seguranca"] is None
+                    encontrou_algum = True
+    assert encontrou_algum, "nenhum card real com dado ausente encontrado nos fixtures"
+
+
 def test_detalhe_404(client):
     assert client.get("/api/bacterias/patologia/99999999").status_code == 404
 

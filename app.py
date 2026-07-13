@@ -522,6 +522,69 @@ def _patologias(cfg: "AgentDomain", categoria_id: int | None) -> list[dict]:
 
 # ── detalhe (genérico) ──────────────────────────────────────────────────────
 
+def _montar_card(
+    *,
+    nome_generico: str | None,
+    nome_comercial: str | None,
+    via: str | None,
+    disponivel_sus: bool,
+    classe: str | None,
+    agent_key: str,
+    agente: str | None,
+    eficacia_pct: float | None,
+    linha_tratamento: int,
+    nivel_evidencia: str | None,
+    resistencia_br_pct: float | None,
+    consideracoes: str | None,
+    fonte: str | None,
+    fonte_nome: str | None,
+    fonte_ano: int | None,
+    is_fallback: bool,
+    radar: dict,
+    posologias: list[dict],
+    interacoes: list[dict],
+    role_label: str | None = None,
+) -> dict:
+    """Envelope compartilhado de um card de medicamento.
+
+    Os três produtores de card (``enrich()``/agente real, o bloco ``synthetic``
+    e ``_build_card``/crônico) montavam o mesmo conjunto de ~14 campos em três
+    lugares — mudar a forma exigia lembrar dos três (foi assim que o
+    ``is_fallback`` do S20 ficou ausente num deles). Este construtor centraliza
+    só o envelope; o ``radar`` continua calculado por cada chamador, pois
+    legitimamente tem formas diferentes (5 eixos por agente vs 3 eixos
+    crônico — não há agente etiológico contra o qual medir resistência).
+
+    ``agent_key`` é o nome da chave do agente (``cfg.agent_out_key`` nos
+    domínios por agente; ``"agente"`` fixo no crônico) — varia por domínio,
+    então não pode ser um campo fixo do dict. ``role_label`` só é usado pelo
+    crônico (papel do medicamento: principal/combinação/alternativa).
+    """
+    card = {
+        "nome_generico":      nome_generico,
+        "nome_comercial":     nome_comercial,
+        "via":                via,
+        "disponivel_sus":     disponivel_sus,
+        "classe":             classe,
+        agent_key:            agente,
+        "eficacia_pct":       eficacia_pct,
+        "linha_tratamento":   linha_tratamento,
+        "nivel_evidencia":    nivel_evidencia,
+        "resistencia_br_pct": resistencia_br_pct,
+        "consideracoes":      consideracoes,
+        "fonte":              fonte,
+        "fonte_nome":         fonte_nome,
+        "fonte_ano":          fonte_ano,
+        "is_fallback":        is_fallback,
+        "radar":              radar,
+        "posologias":         posologias,
+        "interacoes":         interacoes,
+    }
+    if role_label is not None:
+        card["role_label"] = role_label
+    return card
+
+
 def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
     """Detalhe completo de uma patologia por agente etiológico.
 
@@ -659,32 +722,33 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                 sus = 100 if (drow and drow["disponivel_sus"]) else 0
                 aid = drow["id"] if drow else None
                 pos_s, int_s = _pos_int_single(aid) if aid else ([], [])
-                synthetic.append({
-                    "nome_generico":      drow["nome_generico"] if drow else nome,
-                    "nome_comercial":     drow["nome_comercial"] if drow else None,
-                    "via":                drow["via_administracao"] if drow else None,
-                    "disponivel_sus":     bool(drow["disponivel_sus"]) if drow else False,
-                    "classe":             drow["classe"] if drow else None,
-                    cfg.agent_out_key:    None,
-                    "eficacia_pct":       None,
-                    "linha_tratamento":   1,
-                    "nivel_evidencia":    tratamento["nivel_evidencia"],
-                    "resistencia_br_pct": None,
-                    "consideracoes":      tratamento["regime_resumido"],
-                    "fonte":              tratamento["fonte_sigla"],
-                    "fonte_nome":         tratamento["fonte_nome"],
-                    "fonte_ano":          None,
-                    "is_fallback":        True,
-                    "radar": {
+                synthetic.append(_montar_card(
+                    nome_generico=drow["nome_generico"] if drow else nome,
+                    nome_comercial=drow["nome_comercial"] if drow else None,
+                    via=drow["via_administracao"] if drow else None,
+                    disponivel_sus=bool(drow["disponivel_sus"]) if drow else False,
+                    classe=drow["classe"] if drow else None,
+                    agent_key=cfg.agent_out_key,
+                    agente=None,
+                    eficacia_pct=None,
+                    linha_tratamento=1,
+                    nivel_evidencia=tratamento["nivel_evidencia"],
+                    resistencia_br_pct=None,
+                    consideracoes=tratamento["regime_resumido"],
+                    fonte=tratamento["fonte_sigla"],
+                    fonte_nome=tratamento["fonte_nome"],
+                    fonte_ano=None,
+                    is_fallback=True,
+                    radar={
                         "eficacia":       0,
                         "seguranca":      100,
                         "evidencia":      ev,
                         "primeira_linha": 100,
                         "acesso_sus":     sus,
                     },
-                    "posologias":         pos_s,
-                    "interacoes":         int_s,
-                })
+                    posologias=pos_s,
+                    interacoes=int_s,
+                ))
 
         # Posologias e interações em lote (elimina N+1: 2 queries em vez de 2×N)
         drug_ids = [r[cfg.drug_fk] for r in meds]
@@ -743,35 +807,33 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
             seg = None if resistencia is None else max(0.0, 100.0 - resistencia)
             sus = 100 if r["disponivel_sus"] else 0
             aid = r[cfg.drug_fk]
-            return {
-                "nome_generico":      r["nome_generico"],
-                "nome_comercial":     r["nome_comercial"],
-                "via":                r["via_administracao"],
-                "disponivel_sus":     bool(r["disponivel_sus"]),
-                "classe":             r["classe"],
-                cfg.agent_out_key:    r[cfg.agent_out_key],
-                "eficacia_pct":       r["eficacia_pct"],
-                "linha_tratamento":   r["linha_tratamento"],
-                "nivel_evidencia":    r["nivel_evidencia"],
-                "resistencia_br_pct": r["resistencia_br_pct"],
-                "consideracoes":      r["consideracoes"],
-                "fonte":              r["fonte"],
-                "fonte_nome":         r["fonte_nome"],
-                "fonte_ano":          r["fonte_ano"],
-                # Explícito (não omitido) para paridade com os cards sintéticos e
-                # os de patologia crônica, que sempre definem esta chave — a forma
-                # do card fica a mesma em todos os caminhos que o produzem.
-                "is_fallback":        False,
-                "radar": {
+            return _montar_card(
+                nome_generico=r["nome_generico"],
+                nome_comercial=r["nome_comercial"],
+                via=r["via_administracao"],
+                disponivel_sus=bool(r["disponivel_sus"]),
+                classe=r["classe"],
+                agent_key=cfg.agent_out_key,
+                agente=r[cfg.agent_out_key],
+                eficacia_pct=r["eficacia_pct"],
+                linha_tratamento=r["linha_tratamento"],
+                nivel_evidencia=r["nivel_evidencia"],
+                resistencia_br_pct=r["resistencia_br_pct"],
+                consideracoes=r["consideracoes"],
+                fonte=r["fonte"],
+                fonte_nome=r["fonte_nome"],
+                fonte_ano=r["fonte_ano"],
+                is_fallback=False,
+                radar={
                     "eficacia":       None if r["eficacia_pct"] is None else round(r["eficacia_pct"], 1),
                     "seguranca":      None if seg is None else round(seg, 1),
                     "evidencia":      ev,
                     "primeira_linha": ln,
                     "acesso_sus":     sus,
                 },
-                "posologias": posologias_by_id[aid],
-                "interacoes": interacoes_by_id[aid],
-            }
+                posologias=posologias_by_id[aid],
+                interacoes=interacoes_by_id[aid],
+            )
 
         sintomas, criterios, escores = _fetch_clinical(db, patologia_id)
 
@@ -989,27 +1051,28 @@ def _build_card(
     if not posologias and tratamento["regime_resumido"]:
         posologias = [{"regime_texto": tratamento["regime_resumido"]}]
 
-    return {
-        "nome_generico":      med_row["nome_generico"] if med_row else nome_clean,
-        "nome_comercial":     med_row["nome_comercial"] if med_row else None,
-        "via":                med_row["via_administracao"] if med_row else None,
-        "disponivel_sus":     bool(med_row["disponivel_sus"]) if med_row else False,
-        "classe":             med_row["classe"] if med_row else None,
-        "agente":             None,
-        "eficacia_pct":       None,
-        "linha_tratamento":   linha,
-        "nivel_evidencia":    tratamento["nivel_evidencia"],
-        "resistencia_br_pct": None,
-        "consideracoes":      tratamento["regime_resumido"] if linha == 1 else nome_raw,
-        "role_label":         role_label,
-        "fonte":              tratamento["fonte_sigla"],
-        "fonte_nome":         tratamento["fonte_nome"],
-        "fonte_ano":          None,
-        "is_fallback":        med_row is None,
-        "radar":              radar,
-        "posologias":         posologias,
-        "interacoes":         interacoes,
-    }
+    return _montar_card(
+        nome_generico=med_row["nome_generico"] if med_row else nome_clean,
+        nome_comercial=med_row["nome_comercial"] if med_row else None,
+        via=med_row["via_administracao"] if med_row else None,
+        disponivel_sus=bool(med_row["disponivel_sus"]) if med_row else False,
+        classe=med_row["classe"] if med_row else None,
+        agent_key="agente",
+        agente=None,
+        eficacia_pct=None,
+        linha_tratamento=linha,
+        nivel_evidencia=tratamento["nivel_evidencia"],
+        resistencia_br_pct=None,
+        consideracoes=tratamento["regime_resumido"] if linha == 1 else nome_raw,
+        role_label=role_label,
+        fonte=tratamento["fonte_sigla"],
+        fonte_nome=tratamento["fonte_nome"],
+        fonte_ano=None,
+        is_fallback=med_row is None,
+        radar=radar,
+        posologias=posologias,
+        interacoes=interacoes,
+    )
 
 
 @api.get("/cronicas/patologia/{patologia_id}")

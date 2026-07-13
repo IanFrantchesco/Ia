@@ -65,12 +65,12 @@ def test_limiter_presente():
 
 def test_rotas_de_dados_agrupadas_sob_api_router():
     # Preparação para auth/tier futuros: todas as 15 rotas de dados devem estar
-    # sob um único APIRouter com prefixo /api, para que protegê-las vire uma
+    # sob um único APIRouter com prefixo /api/v1, para que protegê-las vire uma
     # linha (`dependencies=[...]`) em vez de editar cada rota.
     api_paths = {r.path for r in app_module.api.routes}
-    assert app_module.api.prefix == "/api"
+    assert app_module.api.prefix == "/api/v1"
     assert len(api_paths) == 15
-    assert all(p.startswith("/api/") for p in api_paths)
+    assert all(p.startswith("/api/v1/") for p in api_paths)
 
 
 def test_saude_e_raiz_fora_do_api_router(client):
@@ -85,39 +85,39 @@ def test_saude_e_raiz_fora_do_api_router(client):
 
 @pytest.mark.parametrize("rota", list(AGENT_DOMINIOS))
 def test_categorias(client, rota):
-    r = client.get(f"/api/{rota}/categorias")
+    r = client.get(f"/api/v1/{rota}/categorias")
     assert r.status_code == 200
     assert isinstance(r.json(), list)
 
 
 @pytest.mark.parametrize("rota", list(AGENT_DOMINIOS))
 def test_patologias(client, rota):
-    r = client.get(f"/api/{rota}/patologias")
+    r = client.get(f"/api/v1/{rota}/patologias")
     assert r.status_code == 200
     assert isinstance(r.json(), list)
 
 
 @pytest.mark.parametrize("rota,dominio", list(AGENT_DOMINIOS.items()))
 def test_detalhe_todos_os_ids(client, rota, dominio):
-    ids = [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]
+    ids = [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]
     assert ids, f"nenhuma patologia para {rota}"
     for pid in ids:
-        r = client.get(f"/api/{rota}/patologia/{pid}")
+        r = client.get(f"/api/v1/{rota}/patologias/{pid}")
         assert r.status_code == 200, f"{rota}/{pid} -> {r.status_code}"
         body = r.json()
         assert DETALHE_KEYS.issubset(body), f"faltam chaves em {rota}/{pid}"
         assert body["dominio"] == dominio
     # Bacterianas mantêm a chave histórica extra "bacterias".
     if rota == "bacterias":
-        assert "bacterias" in client.get(f"/api/bacterias/patologia/{ids[0]}").json()
+        assert "bacterias" in client.get(f"/api/v1/bacterias/patologias/{ids[0]}").json()
 
 
 def test_cronicas(client):
-    assert client.get("/api/cronicas/categorias").status_code == 200
-    ids = [p["id"] for p in client.get("/api/cronicas/patologias").json()]
+    assert client.get("/api/v1/cronicas/categorias").status_code == 200
+    ids = [p["id"] for p in client.get("/api/v1/cronicas/patologias").json()]
     assert ids, "nenhuma patologia cronica"
     for pid in ids:
-        r = client.get(f"/api/cronicas/patologia/{pid}")
+        r = client.get(f"/api/v1/cronicas/patologias/{pid}")
         assert r.status_code == 200
         body = r.json()
         assert DETALHE_KEYS.issubset(body)
@@ -134,8 +134,8 @@ def test_radar_distingue_none_de_zero(client):
     # design (fora de escopo desta correção) e são ignorados aqui.
     encontrou_algum = False
     for rota in AGENT_DOMINIOS:
-        for pid in [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]:
-            det = client.get(f"/api/{rota}/patologia/{pid}").json()
+        for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+            det = client.get(f"/api/v1/{rota}/patologias/{pid}").json()
             for m in det["top3_medicamentos"]:
                 if m.get("is_fallback"):
                     continue
@@ -153,8 +153,8 @@ def test_card_real_define_is_fallback_explicito(client):
     # que sempre definem a chave. Antes a chave ficava ausente nesse caminho.
     encontrou_algum = False
     for rota in AGENT_DOMINIOS:
-        for pid in [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]:
-            det = client.get(f"/api/{rota}/patologia/{pid}").json()
+        for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+            det = client.get(f"/api/v1/{rota}/patologias/{pid}").json()
             for m in det["top3_medicamentos"]:
                 assert "is_fallback" in m, f"{rota}/{pid}: card sem a chave is_fallback"
                 if not m["is_fallback"]:
@@ -164,7 +164,7 @@ def test_card_real_define_is_fallback_explicito(client):
 
 
 def test_detalhe_404(client):
-    assert client.get("/api/bacterias/patologia/99999999").status_code == 404
+    assert client.get("/api/v1/bacterias/patologias/99999999").status_code == 404
 
 
 @pytest.mark.parametrize("url", ["/docs", "/redoc", "/openapi.json"])
@@ -177,7 +177,7 @@ def test_app_funciona_sem_docs(client):
     # Desabilitar as docs não afeta a aplicação em si.
     assert client.get("/").status_code == 200
     assert client.get("/health").status_code == 200
-    assert client.get("/api/bacterias/categorias").status_code == 200
+    assert client.get("/api/v1/bacterias/categorias").status_code == 200
 
 
 def test_erro_inesperado_nao_vaza_detalhe(monkeypatch):
@@ -190,7 +190,7 @@ def test_erro_inesperado_nao_vaza_detalhe(monkeypatch):
 
     monkeypatch.setattr(app_module, "_categorias", boom)
     with TestClient(app_module.app, raise_server_exceptions=False) as c:
-        r = c.get("/api/bacterias/categorias")
+        r = c.get("/api/v1/bacterias/categorias")
     assert r.status_code == 500
     # S24: envelope RFC 9457 (type/title/status/detail) -- mesma garantia de
     # segurança do S13, só a forma da resposta mudou.
@@ -207,7 +207,7 @@ _ENVELOPE_KEYS = {"type", "title", "status", "detail"}
 
 
 def test_erro_404_usa_envelope_rfc9457(client):
-    r = client.get("/api/bacterias/patologia/99999999")
+    r = client.get("/api/v1/bacterias/patologias/99999999")
     assert r.status_code == 404
     body = r.json()
     assert _ENVELOPE_KEYS <= body.keys()
@@ -217,7 +217,7 @@ def test_erro_404_usa_envelope_rfc9457(client):
 
 
 def test_erro_422_usa_envelope_rfc9457(client):
-    r = client.get("/api/bacterias/patologia/abc")
+    r = client.get("/api/v1/bacterias/patologias/abc")
     assert r.status_code == 422
     body = r.json()
     assert _ENVELOPE_KEYS <= body.keys()
@@ -234,9 +234,9 @@ def test_erro_429_usa_envelope_rfc9457():
     app_module.limiter.enabled = True
     try:
         with TestClient(app_module.app, raise_server_exceptions=False) as c:
-            codigos = [c.get("/api/bacterias/categorias").status_code for _ in range(125)]
+            codigos = [c.get("/api/v1/bacterias/categorias").status_code for _ in range(125)]
             assert 429 in codigos, "limite de 120/min não disparou em 125 tentativas"
-            r = c.get("/api/bacterias/categorias")
+            r = c.get("/api/v1/bacterias/categorias")
             assert r.status_code == 429
             body = r.json()
             assert _ENVELOPE_KEYS <= body.keys()
@@ -249,8 +249,8 @@ def test_erros_compartilham_o_mesmo_envelope(client):
     # O ponto central do S24: 404/422/500 (e o 429, testado à parte) devem ter
     # exatamente o mesmo CONJUNTO de chaves de topo -- antes, cada um tinha uma
     # forma diferente ({"detail": str} vs {"detail": [...]} vs {"error": str}).
-    r404 = client.get("/api/bacterias/patologia/99999999")
-    r422 = client.get("/api/bacterias/patologia/abc")
+    r404 = client.get("/api/v1/bacterias/patologias/99999999")
+    r422 = client.get("/api/v1/bacterias/patologias/abc")
     assert set(r404.json().keys()) >= _ENVELOPE_KEYS
     assert set(r422.json().keys()) >= _ENVELOPE_KEYS
     # ambos concordam nas 4 chaves-base (extensões como "errors" podem variar)
@@ -262,17 +262,17 @@ def test_listagem_nao_infla_cache_por_categoria_id(client):
     # entrada de cache por valor — a chave agora é fixa por domínio.
     before = len(app_module._cache)
     for cid in range(900000, 900050):
-        assert client.get(f"/api/bacterias/patologias?categoria_id={cid}").status_code == 200
+        assert client.get(f"/api/v1/bacterias/patologias?categoria_id={cid}").status_code == 200
     # no máximo 1 entrada nova (a listagem completa de bacterias), nunca 50
     assert len(app_module._cache) - before <= 1
 
 
 def test_listagem_filtra_por_categoria_sem_vazar_fk(client):
     # O filtro por categoria continua funcionando e o FK interno não vaza.
-    todas = client.get("/api/bacterias/patologias").json()
+    todas = client.get("/api/v1/bacterias/patologias").json()
     assert todas and all("categoria_id" not in p for p in todas)
-    cid = client.get("/api/bacterias/categorias").json()[0]["id"]
-    filtradas = client.get(f"/api/bacterias/patologias?categoria_id={cid}").json()
+    cid = client.get("/api/v1/bacterias/categorias").json()[0]["id"]
+    filtradas = client.get(f"/api/v1/bacterias/patologias?categoria_id={cid}").json()
     assert len(filtradas) <= len(todas)
 
 
@@ -282,19 +282,19 @@ def test_cronicas_listagem_nao_infla_cache_por_categoria_id(client):
     # testada para bacterias) vale igual para o domínio crônico.
     before = len(app_module._cache)
     for cid in range(900000, 900050):
-        assert client.get(f"/api/cronicas/patologias?categoria_id={cid}").status_code == 200
+        assert client.get(f"/api/v1/cronicas/patologias?categoria_id={cid}").status_code == 200
     assert len(app_module._cache) - before <= 1
 
 
 def test_cronicas_listagem_filtra_por_categoria_sem_vazar_fk(client):
-    todas = client.get("/api/cronicas/patologias").json()
+    todas = client.get("/api/v1/cronicas/patologias").json()
     assert todas and all("categoria_id" not in p for p in todas)
-    cid = client.get("/api/cronicas/categorias").json()[0]["id"]
-    filtradas = client.get(f"/api/cronicas/patologias?categoria_id={cid}").json()
+    cid = client.get("/api/v1/cronicas/categorias").json()[0]["id"]
+    filtradas = client.get(f"/api/v1/cronicas/patologias?categoria_id={cid}").json()
     assert len(filtradas) <= len(todas)
 
 
-@pytest.mark.parametrize("url", ["/", "/health", "/api/bacterias/categorias"])
+@pytest.mark.parametrize("url", ["/", "/health", "/api/v1/bacterias/categorias"])
 def test_headers_de_seguranca(client, url):
     h = client.get(url).headers
     assert "content-security-policy" in h
@@ -309,9 +309,9 @@ def test_headers_de_seguranca(client, url):
 
 def test_gzip_em_resposta_grande(client):
     # Uma resposta JSON grande (detalhe) deve vir comprimida quando o cliente aceita.
-    pid = client.get("/api/bacterias/patologias").json()[0]["id"]
+    pid = client.get("/api/v1/bacterias/patologias").json()[0]["id"]
     r = client.get(
-        f"/api/bacterias/patologia/{pid}", headers={"Accept-Encoding": "gzip"}
+        f"/api/v1/bacterias/patologias/{pid}", headers={"Accept-Encoding": "gzip"}
     )
     assert r.status_code == 200
     assert r.headers.get("content-encoding") == "gzip"

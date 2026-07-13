@@ -597,11 +597,11 @@ Chart.defaults.color = '#64748b';
 Chart.defaults.borderColor = 'rgba(0,0,0,0.07)';
 
 const DOMAINS = {
-  bacteriana:  { prefix:'/api/bacterias', drugLabel:'Antibiótico',     agentKey:'bacterias', radarAxes:5, label:'Bacterianas' },
-  viral:       { prefix:'/api/virais',    drugLabel:'Antiviral',       agentKey:'virus',     radarAxes:5, label:'Virais' },
-  fungica:     { prefix:'/api/fungicos',  drugLabel:'Antifúngico',     agentKey:'fungos',    radarAxes:5, label:'Fúngicas' },
-  parasitaria: { prefix:'/api/parasitos', drugLabel:'Antiparasitário', agentKey:'parasitos', radarAxes:5, label:'Parasitárias' },
-  cronica:     { prefix:'/api/cronicas',  drugLabel:'Medicamento',     agentKey:null,        radarAxes:3, label:'Crônicas' },
+  bacteriana:  { prefix:'/api/v1/bacterias', drugLabel:'Antibiótico',     agentKey:'bacterias', radarAxes:5, label:'Bacterianas' },
+  viral:       { prefix:'/api/v1/virais',    drugLabel:'Antiviral',       agentKey:'virus',     radarAxes:5, label:'Virais' },
+  fungica:     { prefix:'/api/v1/fungicos',  drugLabel:'Antifúngico',     agentKey:'fungos',    radarAxes:5, label:'Fúngicas' },
+  parasitaria: { prefix:'/api/v1/parasitos', drugLabel:'Antiparasitário', agentKey:'parasitos', radarAxes:5, label:'Parasitárias' },
+  cronica:     { prefix:'/api/v1/cronicas',  drugLabel:'Medicamento',     agentKey:null,        radarAxes:3, label:'Crônicas' },
 };
 const DICON = { bacteriana:'🦠', viral:'🧬', fungica:'🍄', parasitaria:'🪱', cronica:'❤️' };
 
@@ -687,7 +687,7 @@ async function selectPat(id) {
     <div class="d-empty"><div class="ldots"><span></span><span></span><span></span></div></div>`;
   closeSidebar();
   try {
-    const data = await api(`${DOMAINS[domain].prefix}/patologia/${id}`);
+    const data = await api(`${DOMAINS[domain].prefix}/patologias/${id}`);
     document.getElementById('mob-pat').textContent = data.patologia?.nome || '';
     renderDetail(data);
   } catch(e) {

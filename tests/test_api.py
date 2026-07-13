@@ -145,6 +145,21 @@ def test_radar_distingue_none_de_zero(client):
                 if m.get("resistencia_br_pct") is None:
                     assert m["radar"]["seguranca"] is None
                     encontrou_algum = True
+
+
+def test_card_real_define_is_fallback_explicito(client):
+    # S20: enrich() (cards reais) agora define "is_fallback": False
+    # explicitamente -- mesma forma que os cards sintéticos e os de crônicas,
+    # que sempre definem a chave. Antes a chave ficava ausente nesse caminho.
+    encontrou_algum = False
+    for rota in AGENT_DOMINIOS:
+        for pid in [p["id"] for p in client.get(f"/api/{rota}/patologias").json()]:
+            det = client.get(f"/api/{rota}/patologia/{pid}").json()
+            for m in det["top3_medicamentos"]:
+                assert "is_fallback" in m, f"{rota}/{pid}: card sem a chave is_fallback"
+                if not m["is_fallback"]:
+                    encontrou_algum = True
+    assert encontrou_algum, "nenhum card real (is_fallback=False) encontrado nos fixtures"
     assert encontrou_algum, "nenhum card real com dado ausente encontrado nos fixtures"
 
 
@@ -275,15 +290,40 @@ def test_cache_seguro_sob_concorrencia():
     assert len(c) == len(list(c.keys()))  # dict íntegro
 
 
+def _agentdomain_kwargs(**overrides):
+    # AgentDomain é @dataclass com todos os campos obrigatórios (S20) -- monta um
+    # conjunto completo e válido, sobrescrevendo só o(s) campo(s) sob teste.
+    base = dict(
+        dominio="x", route="x", junction="x", agent_table="x", agent_fk="x",
+        agent_cols=(), drug_table="x", drug_class_table="x", drug_fk="x",
+        efficacy_table="x", treatment_table="x", treatment_principal="x",
+        posology_table="x", interactions_table="x", agent_out_key="x",
+        categorias_filtered=False, extra_agent_key=None,
+    )
+    base.update(overrides)
+    return base
+
+
 def test_agentdomain_valida_identificadores_sql():
     # Blindagem de injeção: identificadores interpolados em SQL devem casar com
     # [a-z0-9_]; um valor fora do padrão falha na construção (no boot), não em runtime.
     with pytest.raises(ValueError):
-        app_module.AgentDomain(junction="patologia; DROP TABLE x")
+        app_module.AgentDomain(**_agentdomain_kwargs(junction="patologia; DROP TABLE x"))
     with pytest.raises(ValueError):
-        app_module.AgentDomain(agent_cols=("nome", "col invalida"))
+        app_module.AgentDomain(**_agentdomain_kwargs(agent_cols=("nome", "col invalida")))
     # identificadores válidos não levantam
-    app_module.AgentDomain(junction="patologia_bacteria", agent_cols=("nome_cientifico",))
+    app_module.AgentDomain(
+        **_agentdomain_kwargs(junction="patologia_bacteria", agent_cols=("nome_cientifico",))
+    )
+
+
+def test_agentdomain_e_dataclass_com_campos_obrigatorios():
+    # S20: AgentDomain virou @dataclass com todo campo obrigatório -- construir
+    # sem um deles (o próprio TypeError do Python, verificado à parte via mypy
+    # com "call-arg") deve falhar em runtime também, não só silenciosamente
+    # deixar o atributo ausente.
+    with pytest.raises(TypeError):
+        app_module.AgentDomain(junction="patologia_bacteria")
 
 
 def test_conn_bact_e_read_only():

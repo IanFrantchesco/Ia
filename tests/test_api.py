@@ -32,11 +32,23 @@ DETALHE_KEYS = {
 
 
 def test_health(client):
+    # Readiness real: 200 e a contagem de patologias (banco abre e tem dados).
     r = client.get("/health")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert "patologias_bacterianas" in body["dbs"]
+    assert body["patologias"] > 0
+
+
+def test_health_503_com_banco_inacessivel(monkeypatch, tmp_path):
+    # Banco ausente/quebrado deve dar 503 (para o Railway não promover o deploy).
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(app_module, "DB_BACT_PATH", tmp_path / "inexistente.sqlite")
+    with TestClient(app_module.app, raise_server_exceptions=False) as c:
+        r = c.get("/health")
+    assert r.status_code == 503
+    assert r.json()["status"] == "error"
 
 
 def test_root_serves_html(client):

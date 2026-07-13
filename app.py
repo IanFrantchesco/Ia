@@ -35,6 +35,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+APP_VERSION  = "1.0.0"
 DB_BACT_PATH = Path(__file__).parent / "database" / "patologias_bacterianas_br.sqlite"
 STATIC       = Path(__file__).parent / "static"
 
@@ -48,14 +49,26 @@ async def lifespan(app: FastAPI):
     inicializada — por ora, apenas confirma a presença do banco read-only.
     """
     if DB_BACT_PATH.exists():
-        # Loga o journal_mode REAL de produção: confirma se o banco abriu em WAL
-        # (filesystem gravável) ou caiu para outro modo (ex.: 'delete' num FS
-        # read-only). Definitivo para diagnosticar concorrência em produção.
+        # Diagnóstico de boot: journal_mode real (confirma se WAL ativou no FS de
+        # produção) + contagem de patologias por domínio (sanidade: 0 = build do
+        # banco falhou). Transforma o startup num autodiagnóstico útil no log.
         with conn_bact() as db:
             modo = db.execute("PRAGMA journal_mode").fetchone()[0]
-        log.info("DB ok: %s (journal_mode=%s)", DB_BACT_PATH.name, modo)
+            total = db.execute("SELECT count(*) FROM patologias").fetchone()[0]
+            por_dominio = {
+                rota: db.execute(
+                    f"SELECT count(DISTINCT patologia_id) FROM {cfg.junction}"
+                ).fetchone()[0]
+                for rota, cfg in AGENT_DOMAINS.items()
+            }
+        log.info("app v%s | DB %s | journal_mode=%s | patologias=%d | por_dominio=%s",
+                 APP_VERSION, DB_BACT_PATH.name, modo, total, por_dominio)
+        if total == 0:
+            log.critical("ALERTA: 0 patologias no startup — build do banco falhou")
     else:
-        log.error("DB não encontrado: %s", DB_BACT_PATH)
+        log.critical("DB AUSENTE no startup: %s — deploy ficará unhealthy "
+                     "(provável falha de build). App sobe, mas /health dará 503.",
+                     DB_BACT_PATH)
     yield
     # (shutdown: nada a liberar por enquanto)
 
@@ -224,13 +237,22 @@ def root():
 
 @app.get("/health")
 def health():
-    """Healthcheck do Railway: confirma que o banco está presente."""
-    return {
-        "status": "ok",
-        "dbs": {
-            "patologias_bacterianas": DB_BACT_PATH.exists(),
-        },
-    }
+    """Readiness check: 200 só se o banco abre, responde e tem dados; senão 503.
+
+    O Railway usa o STATUS HTTP do healthcheckPath — 503 impede a promoção de um
+    deploy quebrado (banco ausente, corrompido ou vazio), mantendo a versão
+    anterior saudável no ar. Um `exists()` não bastaria: não valida que o arquivo
+    realmente abre nem que tem dados.
+    """
+    try:
+        with conn_bact() as db:
+            n = db.execute("SELECT count(*) FROM patologias").fetchone()[0]
+    except Exception as e:  # arquivo ausente/corrompido/travado
+        log.error("healthcheck falhou ao consultar o banco: %s", e)
+        return JSONResponse(status_code=503, content={"status": "error"})
+    if n == 0:  # abre mas está vazio → build do banco falhou
+        return JSONResponse(status_code=503, content={"status": "degraded", "patologias": 0})
+    return {"status": "ok", "patologias": n}
 
 
 # Agrupa as rotas de dados sob um único router com prefixo /api. Puramente

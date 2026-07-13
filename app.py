@@ -205,6 +205,33 @@ async def add_security_headers(request, call_next):
     return response
 
 
+# ── Cache-Control (dados read-only) ──────────────────────────────────────────
+# Os dados sob /api/v1/* só mudam quando um novo deploy reconstrói o banco
+# (ver lifespan/database/build_db.py) — nunca durante a vida do processo. Sem
+# Cache-Control, o navegador (e qualquer CDN na frente) rebusca a cada acesso
+# um conteúdo que ele já sabe, por contrato, que não muda entre deploys.
+# "public" permite cache também por intermediários; max-age=3600 (1h) é um
+# meio-termo deliberado: deploys são raros o bastante para o ganho valer a
+# pena, mas curto o suficiente para uma correção de dado publicada não ficar
+# presa em cache de cliente por muito tempo. Só em respostas de sucesso (2xx)
+# — erros (404/422/429/500, todos vindos do envelope RFC 9457 do S24) nunca
+# devem ser cacheados.
+CACHE_CONTROL_DADOS = "public, max-age=3600"
+
+
+@app.middleware("http")
+async def add_cache_control(request, call_next):
+    """Injeta Cache-Control nas respostas GET de sucesso sob /api/v1/*."""
+    response = await call_next(request)
+    if (
+        request.method == "GET"
+        and request.url.path.startswith("/api/v1/")
+        and 200 <= response.status_code < 300
+    ):
+        response.headers.setdefault("Cache-Control", CACHE_CONTROL_DADOS)
+    return response
+
+
 # Cache em memória do processo para listagens/categorias/detalhes (read-only).
 # Limitação consciente: não expira e não é compartilhado entre workers — após
 # reconstruir o banco, reinicie o processo para refletir os novos dados.

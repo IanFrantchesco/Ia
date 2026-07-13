@@ -307,6 +307,34 @@ def test_headers_de_seguranca(client, url):
     assert "img-src 'self' data:" in csp
 
 
+def test_cache_control_em_dados_de_sucesso(client):
+    # Dados sob /api/v1/* só mudam a cada deploy (novo processo) — devem levar
+    # Cache-Control para evitar rebusca desnecessária de conteúdo que o
+    # cliente já sabe, por contrato, que não muda durante a vida do processo.
+    r = client.get("/api/v1/bacterias/categorias")
+    assert r.headers["cache-control"] == "public, max-age=3600"
+
+    pid = client.get("/api/v1/bacterias/patologias").json()[0]["id"]
+    r_det = client.get(f"/api/v1/bacterias/patologias/{pid}")
+    assert r_det.headers["cache-control"] == "public, max-age=3600"
+
+
+def test_cache_control_ausente_fora_do_api(client):
+    # "/" e "/health" não são "dados" versionados — não devem ganhar o
+    # Cache-Control de 1h (health precisa refletir o estado real a cada chamada
+    # do healthcheck do Railway; "/" serve sempre o mesmo HTML estático).
+    assert "cache-control" not in {k.lower() for k in client.get("/").headers}
+    assert "cache-control" not in {k.lower() for k in client.get("/health").headers}
+
+
+def test_cache_control_ausente_em_erro(client):
+    # Respostas de erro (404/422/429/500) nunca devem ser cacheadas.
+    r404 = client.get("/api/v1/bacterias/patologias/99999999")
+    r422 = client.get("/api/v1/bacterias/patologias/abc")
+    assert "cache-control" not in {k.lower() for k in r404.headers}
+    assert "cache-control" not in {k.lower() for k in r422.headers}
+
+
 def test_gzip_em_resposta_grande(client):
     # Uma resposta JSON grande (detalhe) deve vir comprimida quando o cliente aceita.
     pid = client.get("/api/v1/bacterias/patologias").json()[0]["id"]

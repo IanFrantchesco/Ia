@@ -870,12 +870,28 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
         pat = _fetch_patologia(db, patologia_id)
 
         agent_select = ", ".join(f"ag.{c}" for c in cfg.agent_cols)
+        # ORDER BY por PRIORIDADE CLÍNICA explícita, não alfabética. Antes era
+        # `ORDER BY j.papel`, que o SQLite ordena lexicograficamente — e como
+        # 'oportunista' < 'principal' < 'secundario', o agente principal era
+        # PULADO: agentes[0] pegava o oportunista/secundário. Isso tinha dois
+        # efeitos clínicos ruins: (1) a lista exibida liderava pelo agente
+        # errado; (2) o fallback de nível-2 abaixo usa agentes[0]["nome_
+        # cientifico"] para puxar a eficácia genérica do "agente principal" —
+        # e puxava a do patógeno errado (ex.: CAUTI mostrava eficácia contra
+        # Pseudomonas oportunista em vez de E. coli, o agente principal).
+        # A hierarquia principal > secundário > oportunista é clínica; ajustável
+        # se a equipe médica quiser outra. ELSE 4 protege valores futuros.
         agentes = db.execute(
             f"""SELECT {agent_select}, j.papel, j.frequencia_pct
                 FROM {cfg.junction} j
                 JOIN {cfg.agent_table} ag ON ag.id = j.{cfg.agent_fk}
                 WHERE j.patologia_id = ?
-                ORDER BY j.papel, j.frequencia_pct DESC""",
+                ORDER BY CASE j.papel
+                           WHEN 'principal'   THEN 1
+                           WHEN 'secundario'  THEN 2
+                           WHEN 'oportunista' THEN 3
+                           ELSE 4
+                         END, j.frequencia_pct DESC""",
             (patologia_id,),
         ).fetchall()
 

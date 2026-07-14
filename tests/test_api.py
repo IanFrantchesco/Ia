@@ -112,6 +112,53 @@ def test_detalhe_todos_os_ids(client, rota, dominio):
         assert "bacterias" in client.get(f"/api/v1/bacterias/patologias/{ids[0]}").json()
 
 
+@pytest.mark.parametrize("rota", ["bacterias", "virais", "fungicos", "parasitos"])
+def test_agentes_ordenados_por_prioridade_clinica(client, rota):
+    # S32 (risco clínico): a lista de agentes deve liderar pelo agente
+    # 'principal' — antes, o ORDER BY j.papel era alfabético e
+    # 'oportunista'/'secundario' vinham antes de 'principal', fazendo o
+    # fallback de nível-2 puxar eficácia do patógeno errado (ex.: CAUTI ->
+    # Pseudomonas em vez de E. coli). Invariante: se existe um agente
+    # 'principal' na patologia, ele deve ser o PRIMEIRO da lista.
+    PRIORIDADE = {"principal": 1, "secundario": 2, "oportunista": 3}
+    ids = [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]
+    checou_multi = False
+    for pid in ids:
+        agentes = client.get(f"/api/v1/{rota}/patologias/{pid}").json()["agentes"]
+        papeis = [a.get("papel") for a in agentes]
+        if "principal" in papeis:
+            assert papeis[0] == "principal", (
+                f"{rota}/{pid}: agente não-principal ({papeis[0]}) precede o principal"
+            )
+        # ordem não-decrescente de prioridade clínica ao longo da lista
+        ranks = [PRIORIDADE.get(p, 9) for p in papeis]
+        assert ranks == sorted(ranks), f"{rota}/{pid}: papéis fora da ordem clínica: {papeis}"
+        if len(set(papeis)) > 1:
+            checou_multi = True
+    if rota == "bacterias":
+        assert checou_multi, "esperava ao menos uma patologia multi-papel em bacterias"
+
+
+def test_cauti_usa_agente_principal_nao_oportunista(client):
+    # S32, caso canônico: ITU associada a cateter (CAUTI) tem E. coli como
+    # agente principal (45%) e Pseudomonas como oportunista (10%). O primeiro
+    # agente exibido deve ser E. coli — não o oportunista.
+    ids = [p["id"] for p in client.get("/api/v1/bacterias/patologias").json()]
+    cauti = next((p for p in ids), None)
+    # localiza a CAUTI pelo nome (id pode variar entre rebuilds)
+    alvo = None
+    for pid in ids:
+        body = client.get(f"/api/v1/bacterias/patologias/{pid}").json()
+        if "cateter" in body["patologia"]["nome"].lower() or "CAUTI" in body["patologia"]["nome"]:
+            alvo = body
+            break
+    assert alvo is not None, "patologia CAUTI não encontrada"
+    principais = [a for a in alvo["agentes"] if a.get("papel") == "principal"]
+    if principais:
+        assert alvo["agentes"][0]["papel"] == "principal"
+        assert "coli" in alvo["agentes"][0]["nome_cientifico"].lower()
+
+
 def test_cronicas(client):
     assert client.get("/api/v1/cronicas/categorias").status_code == 200
     ids = [p["id"] for p in client.get("/api/v1/cronicas/patologias").json()]

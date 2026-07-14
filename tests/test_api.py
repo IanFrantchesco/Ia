@@ -287,6 +287,42 @@ def test_card_real_define_is_fallback_explicito(client):
     assert encontrou_algum, "nenhum card real com dado ausente encontrado nos fixtures"
 
 
+def test_medicamento_nao_catalogado_e_campo_proprio(client):
+    # S36 (ponto 6): is_fallback e medicamento_nao_catalogado são conceitos
+    # distintos. Antes o is_fallback do crônico significava "fármaco não achado
+    # na base" (semântica diferente do agente). Agora:
+    # - todo card tem medicamento_nao_catalogado (bool);
+    # - is_fallback = card sintético sem eficácia comparativa (só agente);
+    # - crônico: is_fallback sempre False; "não achado" vive no campo próprio.
+    todas = list(AGENT_DOMINIOS) + ["cronicas"]
+    algum_sintetico = False
+    algum_cronico = False
+    cronico_nao_catalogado = False
+    for rota in todas:
+        for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+            for m in client.get(f"/api/v1/{rota}/patologias/{pid}").json()["top3_medicamentos"]:
+                assert isinstance(m.get("medicamento_nao_catalogado"), bool), (
+                    f"{rota}/{pid}: campo medicamento_nao_catalogado ausente/não-bool"
+                )
+                if rota == "cronicas":
+                    algum_cronico = True
+                    # crônico não tem conceito de eficácia comparativa -> nunca é fallback
+                    assert m["is_fallback"] is False, f"{rota}/{pid}: crônico com is_fallback=True"
+                    if m["medicamento_nao_catalogado"]:
+                        cronico_nao_catalogado = True
+                else:
+                    # card real: nem sintético nem não-catalogado; sintético: is_fallback=True
+                    if m["is_fallback"]:
+                        algum_sintetico = True
+                    else:
+                        assert m["medicamento_nao_catalogado"] is False, (
+                            f"{rota}/{pid}: card real marcado como não catalogado"
+                        )
+    assert algum_cronico, "nenhum card crônico nos fixtures"
+    assert algum_sintetico, "nenhum card sintético de agente nos fixtures"
+    assert cronico_nao_catalogado, "esperava ao menos um crônico com fármaco não catalogado"
+
+
 def test_detalhe_404(client):
     assert client.get("/api/v1/bacterias/patologias/99999999").status_code == 404
 

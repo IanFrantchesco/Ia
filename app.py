@@ -800,6 +800,7 @@ def _montar_card(
     fonte_nome: str | None,
     fonte_ano: int | None,
     is_fallback: bool,
+    medicamento_nao_catalogado: bool,
     radar: dict,
     posologias: list[dict],
     interacoes: list[dict],
@@ -819,6 +820,17 @@ def _montar_card(
     domínios por agente; ``"agente"`` fixo no crônico) — varia por domínio,
     então não pode ser um campo fixo do dict. ``role_label`` só é usado pelo
     crônico (papel do medicamento: principal/combinação/alternativa).
+
+    ``is_fallback`` e ``medicamento_nao_catalogado`` são conceitos DISTINTOS
+    (S36) — antes o ``is_fallback`` codificava os dois, com significado
+    diferente por domínio:
+    - ``is_fallback``: o card é sintético, montado da diretriz por FALTA DE
+      DADO DE EFICÁCIA COMPARATIVA (só o bloco ``synthetic`` do agente). Não é
+      sobre o fármaco existir na base, e sim sobre a origem do dado de eficácia.
+    - ``medicamento_nao_catalogado``: o nome do fármaco (da diretriz) NÃO foi
+      resolvido na tabela de medicamentos/fármacos, então via, classe,
+      posologia e interações podem faltar. É um sinal de completude de dado,
+      ortogonal ao ``is_fallback``.
     """
     card = {
         "nome_generico":      nome_generico,
@@ -836,6 +848,7 @@ def _montar_card(
         "fonte_nome":         fonte_nome,
         "fonte_ano":          fonte_ano,
         "is_fallback":        is_fallback,
+        "medicamento_nao_catalogado": medicamento_nao_catalogado,
         "radar":              radar,
         "posologias":         posologias,
         "interacoes":         interacoes,
@@ -1017,6 +1030,10 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                     fonte_nome=tratamento["fonte_nome"],
                     fonte_ano=None,
                     is_fallback=True,
+                    # drow is None: o fármaco da diretriz não foi resolvido na
+                    # tabela de fármacos (sem via/classe/posologia) — sinal de
+                    # completude, distinto do is_fallback (S36).
+                    medicamento_nao_catalogado=(drow is None),
                     # eficacia/seguranca = None (NÃO 0/100): este é um card
                     # sintético da diretriz, sem dado quantitativo de eficácia
                     # nem de resistência. Antes cravava eficacia=0 (o frontend
@@ -1112,6 +1129,8 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                 fonte_nome=r["fonte_nome"],
                 fonte_ano=r["fonte_ano"],
                 is_fallback=False,
+                # card real vem sempre de uma linha de fármaco resolvida
+                medicamento_nao_catalogado=False,
                 radar={
                     "eficacia":       None if r["eficacia_pct"] is None else round(r["eficacia_pct"], 1),
                     "seguranca":      None if seg is None else round(seg, 1),
@@ -1366,7 +1385,12 @@ def _build_card(
         fonte=tratamento["fonte_sigla"],
         fonte_nome=tratamento["fonte_nome"],
         fonte_ano=None,
-        is_fallback=med_row is None,
+        # S36: o crônico não tem conceito de eficácia comparativa, então NÃO é
+        # um "fallback por falta dela" -> is_fallback=False. O que antes estava
+        # aqui (med_row is None = fármaco não achado na base) vira o campo
+        # próprio medicamento_nao_catalogado.
+        is_fallback=False,
+        medicamento_nao_catalogado=(med_row is None),
         radar=radar,
         posologias=posologias,
         interacoes=interacoes,

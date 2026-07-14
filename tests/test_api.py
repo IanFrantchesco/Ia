@@ -183,6 +183,31 @@ def test_medicamentos_empatados_tem_ordem_estavel(client, rota):
         assert encontrou_empate, "esperava ao menos um par empatado em bacterias"
 
 
+@pytest.mark.parametrize("rota", ["bacterias", "virais", "fungicos", "parasitos"])
+def test_top3_ordenado_por_linha_de_tratamento(client, rota):
+    # S35 (decisão de produto do ponto 4): os top-3 passam a ordenar por LINHA
+    # de tratamento primeiro (1ª linha antes de 2ª antes de 3ª) e, dentro da
+    # mesma linha, por eficácia decrescente. Antes era eficácia-primeiro, que
+    # exibia uma 2ª linha mais eficaz acima de uma 1ª linha. Só vale para cards
+    # reais (eficacia_pct/linha não-None); sintéticos vêm da diretriz.
+    for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+        cards = client.get(f"/api/v1/{rota}/patologias/{pid}").json()["top3_medicamentos"]
+        reais = [c for c in cards if c.get("eficacia_pct") is not None
+                 and c.get("linha_tratamento") is not None]
+        for a, b in zip(reais, reais[1:]):
+            # linha não-decrescente ao longo da lista
+            assert a["linha_tratamento"] <= b["linha_tratamento"], (
+                f"{rota}/{pid}: linha {a['linha_tratamento']} antes de "
+                f"{b['linha_tratamento']} (deveria vir depois)"
+            )
+            # dentro da MESMA linha, eficácia não-crescente
+            if a["linha_tratamento"] == b["linha_tratamento"]:
+                assert a["eficacia_pct"] >= b["eficacia_pct"], (
+                    f"{rota}/{pid}: mesma linha, eficácia {a['eficacia_pct']} "
+                    f"antes de {b['eficacia_pct']}"
+                )
+
+
 def test_cronicas(client):
     assert client.get("/api/v1/cronicas/categorias").status_code == 200
     ids = [p["id"] for p in client.get("/api/v1/cronicas/patologias").json()]

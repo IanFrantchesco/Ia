@@ -913,7 +913,8 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
         meds = db.execute(
             f"""SELECT {eff_cols} {eff_from}
                 WHERE e.patologia_id = ?
-                ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+                ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC,
+                         a.nome_generico ASC
                 LIMIT 3""",
             (patologia_id,),
         ).fetchall()
@@ -929,7 +930,8 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                 meds = db.execute(
                     f"""SELECT {eff_cols} {eff_from}
                         WHERE e.{cfg.agent_fk} = ? AND e.patologia_id IS NULL
-                        ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC
+                        ORDER BY e.eficacia_pct DESC, e.linha_tratamento ASC,
+                         a.nome_generico ASC
                         LIMIT 3""",
                     (agent_id_row["id"],),
                 ).fetchall()

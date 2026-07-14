@@ -159,6 +159,30 @@ def test_cauti_usa_agente_principal_nao_oportunista(client):
         assert "coli" in alvo["agentes"][0]["nome_cientifico"].lower()
 
 
+@pytest.mark.parametrize("rota", ["bacterias", "virais", "fungicos", "parasitos"])
+def test_medicamentos_empatados_tem_ordem_estavel(client, rota):
+    # S34 (ponto 5): quando dois medicamentos empatam em eficácia E linha de
+    # tratamento, a ordem entre eles era indefinida pelo SQLite (e o cache
+    # congelava a 1ª execução). Com o desempate `a.nome_generico ASC`, cards
+    # adjacentes com (eficacia_pct, linha_tratamento) iguais devem aparecer em
+    # ordem alfabética de nome_genérico. Só vale para cards reais (eficacia_pct
+    # não-None); sintéticos vêm da diretriz, não da query de eficácia.
+    encontrou_empate = False
+    for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+        cards = client.get(f"/api/v1/{rota}/patologias/{pid}").json()["top3_medicamentos"]
+        for a, b in zip(cards, cards[1:]):
+            if a.get("eficacia_pct") is None or b.get("eficacia_pct") is None:
+                continue
+            if a["eficacia_pct"] == b["eficacia_pct"] and a["linha_tratamento"] == b["linha_tratamento"]:
+                assert a["nome_generico"] <= b["nome_generico"], (
+                    f"{rota}/{pid}: empatados fora de ordem: "
+                    f"{a['nome_generico']} antes de {b['nome_generico']}"
+                )
+                encontrou_empate = True
+    if rota == "bacterias":
+        assert encontrou_empate, "esperava ao menos um par empatado em bacterias"
+
+
 def test_cronicas(client):
     assert client.get("/api/v1/cronicas/categorias").status_code == 200
     ids = [p["id"] for p in client.get("/api/v1/cronicas/patologias").json()]

@@ -1015,9 +1015,19 @@ def _agent_detalhe(cfg: "AgentDomain", patologia_id: int) -> dict:
                     fonte_nome=tratamento["fonte_nome"],
                     fonte_ano=None,
                     is_fallback=True,
+                    # eficacia/seguranca = None (NÃO 0/100): este é um card
+                    # sintético da diretriz, sem dado quantitativo de eficácia
+                    # nem de resistência. Antes cravava eficacia=0 (o frontend
+                    # renderizava "0% de eficácia" para a 1ª escolha da
+                    # diretriz) e seguranca=100 (afirmava segurança MÁXIMA sem
+                    # base) — desinformação clínica. None propaga "sem dado" e o
+                    # Chart.js renderiza como vazio/gap, igual ao card real
+                    # (enrich), que já usa None nesses eixos. Os demais eixos
+                    # são legítimos: primeira_linha=100 (o card É da 1ª linha da
+                    # diretriz), evidencia do nível_evidencia, acesso_sus do SUS.
                     radar={
-                        "eficacia":       0,
-                        "seguranca":      100,
+                        "eficacia":       None,
+                        "seguranca":      None,
                         "evidencia":      ev,
                         "primeira_linha": 100,
                         "acesso_sus":     sus,

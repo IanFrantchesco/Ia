@@ -177,8 +177,8 @@ def test_radar_distingue_none_de_zero(client):
     # como zero" no radar dos cards REAIS (via enrich(), is_fallback=False). Varre
     # os domínios de agente procurando um card assim com eficacia_pct/
     # resistencia_br_pct None e confirma que o radar propaga None (não 0/100
-    # enganoso). Cards sintéticos (is_fallback=True) usam radar hardcoded por
-    # design (fora de escopo desta correção) e são ignorados aqui.
+    # enganoso). O radar dos cards sintéticos é coberto à parte, em
+    # test_radar_sintetico_nao_fabrica_eficacia_nem_seguranca (S33).
     encontrou_algum = False
     for rota in AGENT_DOMINIOS:
         for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
@@ -192,6 +192,34 @@ def test_radar_distingue_none_de_zero(client):
                 if m.get("resistencia_br_pct") is None:
                     assert m["radar"]["seguranca"] is None
                     encontrou_algum = True
+
+
+def test_radar_sintetico_nao_fabrica_eficacia_nem_seguranca(client):
+    # S33 (risco clínico, pontos 2 e 3): o card sintético (is_fallback=True) é
+    # montado da diretriz, SEM dado quantitativo de eficácia nem de resistência.
+    # Antes cravava radar.eficacia=0 (renderizava "0% de eficácia" para a 1ª
+    # escolha da diretriz) e radar.seguranca=100 (afirmava segurança máxima sem
+    # base). Ambos devem ser None (sem dado), igual ao card real. Os outros
+    # eixos permanecem preenchidos (primeira_linha, evidencia, acesso_sus).
+    encontrou = False
+    for rota in AGENT_DOMINIOS:
+        for pid in [p["id"] for p in client.get(f"/api/v1/{rota}/patologias").json()]:
+            det = client.get(f"/api/v1/{rota}/patologias/{pid}").json()
+            for m in det["top3_medicamentos"]:
+                if not m.get("is_fallback"):
+                    continue
+                radar = m["radar"]
+                # cards sintéticos por agente têm o radar de 5 eixos
+                if "eficacia" not in radar:
+                    continue
+                assert radar["eficacia"] is None, f"{rota}/{pid}: eficácia fabricada no sintético"
+                assert radar["seguranca"] is None, f"{rota}/{pid}: segurança fabricada no sintético"
+                # eixos legítimos continuam numéricos
+                assert radar["primeira_linha"] == 100
+                assert isinstance(radar["evidencia"], (int, float))
+                assert isinstance(radar["acesso_sus"], (int, float))
+                encontrou = True
+    assert encontrou, "nenhum card sintético (is_fallback=True) encontrado nos fixtures"
 
 
 def test_card_real_define_is_fallback_explicito(client):

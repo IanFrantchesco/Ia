@@ -852,3 +852,170 @@ def test_lookup_med_cascata_no_banco_real():
 
         # inexistente
         assert app_module._lookup_med(db, "medicamento-que-nao-existe-xyz") is None
+
+
+# ── S37: fallback por nível + resolução de fármaco ──────────────────────────
+
+def test_nivel1_eficacia_especifica_gera_card_real(client):
+    # Nível 1: patologia COM eficácia específica -> card real (is_fallback=False,
+    # eficacia_pct preenchido). A resposta não marca o nível; identificamos a
+    # patologia pela própria tabela de eficácia.
+    cfg = app_module.AGENT_DOMAINS["bacterias"]
+    with app_module.conn_bact() as db:
+        pid = db.execute(
+            f"SELECT patologia_id FROM {cfg.efficacy_table} "
+            f"WHERE patologia_id IS NOT NULL LIMIT 1"
+        ).fetchone()[0]
+    top3 = client.get(f"/api/v1/bacterias/patologias/{pid}").json()["top3_medicamentos"]
+    assert top3, "nível 1 deveria produzir medicamentos"
+    assert any(m["is_fallback"] is False and m["eficacia_pct"] is not None for m in top3)
+
+
+def test_nivel3_sem_eficacia_com_diretriz_gera_sintetico(client):
+    # Nível 3: patologia SEM eficácia mas COM diretriz -> cards sintéticos
+    # (is_fallback=True, eficacia_pct None). Como o nível-2 não é alcançado por
+    # nenhuma patologia (ver test_nivel2_...), "sem eficácia específica + com
+    # tratamento" cai no nível-3.
+    cfg = app_module.AGENT_DOMAINS["bacterias"]
+    with app_module.conn_bact() as db:
+        row = db.execute(
+            f"""SELECT t.patologia_id FROM {cfg.treatment_table} t
+                WHERE NOT EXISTS (SELECT 1 FROM {cfg.efficacy_table} e
+                                  WHERE e.patologia_id = t.patologia_id)
+                LIMIT 1"""
+        ).fetchone()
+    assert row, "esperava ao menos uma patologia de nível 3 nos dados"
+    top3 = client.get(f"/api/v1/bacterias/patologias/{row[0]}").json()["top3_medicamentos"]
+    assert top3 and all(m["is_fallback"] for m in top3)
+    assert all(m["eficacia_pct"] is None for m in top3)
+
+
+def test_nivel2_atualmente_nao_alcancado_pelos_dados():
+    # ACHADO A: o nível-2 (eficácia GENÉRICA do agente principal, patologia_id
+    # IS NULL) não é acionado por NENHUMA patologia nos dados atuais -- toda
+    # patologia cujo principal tem eficácia genérica também tem eficácia
+    # específica (cai no nível-1). Este teste TRAVA o fato: se um dado futuro
+    # tornar o nível-2 alcançável, ele falha e obriga cobertura explícita do
+    # caminho (hoje inobservável via API).
+    ROTAS = ["bacterias", "virais", "fungicos", "parasitos"]
+    rank = {"principal": 1, "secundario": 2, "oportunista": 3}
+    alcancaveis = 0
+    with app_module.conn_bact() as db:
+        for rota in ROTAS:
+            cfg = app_module.AGENT_DOMAINS[rota]
+            pids = [r[0] for r in db.execute(
+                f"SELECT DISTINCT patologia_id FROM {cfg.junction}")]
+            for pid in pids:
+                if db.execute(f"SELECT 1 FROM {cfg.efficacy_table} "
+                              f"WHERE patologia_id=? LIMIT 1", (pid,)).fetchone():
+                    continue  # tem eficácia específica -> nível 1
+                ags = db.execute(
+                    f"""SELECT ag.nome_cientifico AS nc, j.papel FROM {cfg.junction} j
+                        JOIN {cfg.agent_table} ag ON ag.id = j.{cfg.agent_fk}
+                        WHERE j.patologia_id=?""", (pid,)).fetchall()
+                if not ags:
+                    continue
+                principal = sorted(ags, key=lambda r: rank.get(r["papel"], 4))[0]["nc"]
+                aid = db.execute(f"SELECT id FROM {cfg.agent_table} "
+                                 f"WHERE nome_cientifico=?", (principal,)).fetchone()
+                if aid and db.execute(
+                    f"SELECT 1 FROM {cfg.efficacy_table} "
+                    f"WHERE {cfg.agent_fk}=? AND patologia_id IS NULL LIMIT 1",
+                    (aid[0],)).fetchone():
+                    alcancaveis += 1
+    assert alcancaveis == 0, (
+        f"{alcancaveis} patologias agora alcançam o nível-2 — crie cobertura "
+        "explícita deste caminho (até então inobservável via API)."
+    )
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("Amoxicilina + Clavulanato", "Amoxicilina"),        # combinação
+    ("Levotiroxina 50mcg",        "Levotiroxina"),        # dose colada
+    ("Losartana (potássica)",     "Losartana"),           # parêntese NÃO-dose
+    ("Penicilina G 1.200.000 UI", "Penicilina G"),        # nome de 2 palavras
+    ("Sulfato de magnésio",       "Sulfato de magnésio"),  # 3 palavras, sem dose
+    ("5-Fluorouracil",            "5-Fluorouracil"),       # inicial dígito
+    ("@#$%",                      "@#$%"),                 # entrada estranha, crua
+])
+def test_extract_first_drug_casos_extremos(texto, esperado):
+    # Estende (não substitui) test_extract_first_drug com casos de nome
+    # multi-palavra, dose colada, parêntese não-dose e inicial dígito/estranha.
+    assert app_module._extract_first_drug(texto) == esperado
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "ACHADO B: _lookup_med resolve nome-fantasma que compartilha a 1ª palavra "
+    "para um fármaco arbitrário (LIKE 'palavra%' LIMIT 1 sem ORDER BY). "
+    "Quando _lookup_med for corrigido, vira xpass e o strict força remover o marcador."
+))
+def test_lookup_med_prefixo_nao_deve_resolver_farmaco_arbitrario():
+    # Comportamento DESEJADO: um nome que não existe (só compartilha a 1ª
+    # palavra com fármacos reais, ex.: "Sulfato ...") deveria retornar None,
+    # não um fármaco arbitrário do grupo. Hoje falha (retorna um fármaco).
+    with app_module.conn_bact() as db:
+        # 1ª palavra compartilhada por >1 fármaco, sem inicial acentuada
+        # (acentuada falha por outro motivo — LOWER ASCII-only do SQLite)
+        rows = db.execute("SELECT nome_generico FROM medicamentos").fetchall()
+        from collections import defaultdict
+        grupos = defaultdict(list)
+        for r in rows:
+            w = r["nome_generico"].split()[0]
+            if w.isascii():
+                grupos[w.lower()].append(r["nome_generico"])
+        colidente = next(w for w, v in grupos.items() if len(v) > 1)
+        fantasma = f"{colidente.capitalize()} inexistentexyz"
+        r = app_module._lookup_med(db, fantasma)
+    assert r is None, f"resolveu {fantasma!r} para {r['nome_generico'] if r else None!r}"
+
+
+def test_detalhe_coerente_sob_dados_parciais(client):
+    # Dados parciais: patologia com agente mas SEM tratamento padrão-ouro deve
+    # responder 200 com estrutura íntegra -- nunca exceção. (top3 pode ser [].)
+    # Varre os 4 domínios porque o caso é raro (não ocorre em bacterias, mas sim
+    # em virais/parasitos); testa o primeiro que encontrar.
+    alvo = None
+    with app_module.conn_bact() as db:
+        for rota in AGENT_DOMINIOS:
+            cfg = app_module.AGENT_DOMAINS[rota]
+            row = db.execute(
+                f"""SELECT DISTINCT j.patologia_id FROM {cfg.junction} j
+                    WHERE NOT EXISTS (SELECT 1 FROM {cfg.treatment_table} t
+                                      WHERE t.patologia_id = j.patologia_id)
+                    LIMIT 1""").fetchone()
+            if row:
+                alvo = (rota, row[0])
+                break
+    if alvo is None:
+        pytest.skip("nenhuma patologia com agente e sem tratamento nos dados")
+    rota, pid = alvo
+    body = client.get(f"/api/v1/{rota}/patologias/{pid}").json()
+    assert DETALHE_KEYS.issubset(body)
+    assert isinstance(body["top3_medicamentos"], list)
+
+
+def test_cronico_com_farmaco_nao_resolvido_e_coerente(client):
+    # Crônico com fármaco não catalogado -> card íntegro (200), com
+    # medicamento_nao_catalogado=True e is_fallback=False (S36).
+    achou = False
+    for pid in [p["id"] for p in client.get("/api/v1/cronicas/patologias").json()]:
+        for m in client.get(f"/api/v1/cronicas/patologias/{pid}").json()["top3_medicamentos"]:
+            if m["medicamento_nao_catalogado"]:
+                assert m["is_fallback"] is False
+                assert "nome_generico" in m and "radar" in m
+                achou = True
+    assert achou, "esperava ao menos um crônico com fármaco não catalogado"
+
+
+def test_limiter_configurado_com_default_120_por_minuto():
+    # Fixa a INTENÇÃO da config sem depender de janela de tempo (sem flakiness).
+    # _default_limits é uma lista de LimitGroup, cada um iterável de Limit cujo
+    # .limit estringifica como "120 per 1 minute".
+    limites = [
+        str(lim.limit)
+        for grupo in app_module.limiter._default_limits
+        for lim in grupo
+    ]
+    combinado = " ".join(limites)
+    assert "120" in combinado and "minute" in combinado, combinado
+    assert app_module.RATE_LIMIT_LISTAGEM == "20/minute;500/day"

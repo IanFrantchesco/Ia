@@ -144,7 +144,6 @@ def test_cauti_usa_agente_principal_nao_oportunista(client):
     # agente principal (45%) e Pseudomonas como oportunista (10%). O primeiro
     # agente exibido deve ser E. coli — não o oportunista.
     ids = [p["id"] for p in client.get("/api/v1/bacterias/patologias").json()]
-    cauti = next((p for p in ids), None)
     # localiza a CAUTI pelo nome (id pode variar entre rebuilds)
     alvo = None
     for pid in ids:
@@ -241,6 +240,7 @@ def test_radar_distingue_none_de_zero(client):
                 if m.get("resistencia_br_pct") is None:
                     assert m["radar"]["seguranca"] is None
                     encontrou_algum = True
+    assert encontrou_algum, "nenhum card real com dado ausente para exercitar None-vs-zero"
 
 
 def test_radar_sintetico_nao_fabrica_eficacia_nem_seguranca(client):

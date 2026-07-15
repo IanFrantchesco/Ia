@@ -3,3 +3,8 @@
 pytest==8.3.4
 httpx==0.28.1
 mypy==2.2.0
+# Qualidade/segurança rodadas no CI (S39):
+# ruff = lint; pytest-cov = cobertura com piso; pip-audit = CVE nas deps.
+ruff==0.15.8
+pytest-cov==7.1.0
+pip-audit==2.10.1

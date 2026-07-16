@@ -23,8 +23,14 @@ jobs:
       - name: Build database (offline, sem segredos)
         run: python database/build_db.py
 
+      - name: Lint (ruff)
+        run: ruff check app.py tests/
+
       - name: Type check (mypy)
         run: mypy app.py
 
-      - name: Run tests
-        run: pytest -v
+      - name: Auditoria de CVE nas dependências de produção
+        run: pip-audit -r requirements.txt
+
+      - name: Run tests + cobertura
+        run: pytest -v --cov=app --cov-report=term-missing --cov-fail-under=95

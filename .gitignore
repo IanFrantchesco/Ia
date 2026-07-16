@@ -9,3 +9,6 @@ __pycache__/
 database/_trat_*.py
 *.pdf
 .pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/

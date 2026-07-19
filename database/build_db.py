@@ -3,6 +3,7 @@ Constrói o banco de dados SQLite de patologias bacterianas no Brasil.
 Uso: python database/build_db.py
 """
 
+import json
 import sqlite3
 import os
 import sys
@@ -67,6 +68,10 @@ from data_criterios_cronicas import CRITERIOS_CRONICAS
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "patologias_bacterianas_br.sqlite")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
+# Baseline versionado das referências que o build hoje NÃO resolve (nomes de
+# fármaco/medicamento/patologia que não casam) — 3c. Aceitas como dívida
+# conhecida; o build FALHA só se surgir uma referência NOVA (ratchet).
+KNOWN_UNRESOLVED = os.path.join(os.path.dirname(__file__), "known_unresolved.json")
 
 
 def connect():
@@ -1401,6 +1406,104 @@ def print_summary(conn):
     print("──────────────────────────────────────────────────\n")
 
 
+def collect_unresolved(conn):
+    """Re-deriva os descartes por nome não resolvido, REUSANDO as próprias
+    funções de resolução do build (get_id / _get_patologia_id_by_substr) — logo
+    não pode divergir do que o build realmente descarta. Retorna um set de
+    strings ``"<categoria>: <nome>"``.
+
+    Só conta descarte REAL (nome não-None que não resolve). Nomes None são
+    intencionais (ex.: 'não há antiviral') e não entram. Patologia não resolvida
+    só é descarte nos TRATAMENTOS/sintomas/critérios (que dão ``continue``); na
+    eficácia, o registro entra com patologia_id NULL, então não conta aqui.
+    """
+    def _ok(table, col, name):
+        if not name:
+            return True
+        try:
+            get_id(conn, table, col, name)
+            return True
+        except ValueError:
+            return False
+
+    drops = set()
+    efic = [
+        ("efic_atb", EFICACIA, "antibioticos", "bacterias"),
+        ("efic_atv", EFICACIA_VIRAL, "antivirais", "virus"),
+        ("efic_atf", EFICACIA_FUNGICA, "antifungicos", "fungos"),
+        ("efic_atp", EFICACIA_PARASITARIA, "antiparasitarios", "parasitos"),
+    ]
+    for kind, data, drug_tab, ag_tab in efic:
+        for agente, regs in data.items():
+            if not _ok(ag_tab, "nome_cientifico", agente):
+                drops.add(f"{kind}:AGENTE:{agente}")
+                continue
+            for r in regs:
+                if r[0] is not None and not _ok(drug_tab, "nome_generico", r[0]):
+                    drops.add(f"{kind}:{r[0]}")
+
+    lista = [
+        ("pos_atb", POSOLOGIA, "antibioticos"), ("pos_atv", POSOLOGIA_VIRAL, "antivirais"),
+        ("pos_atf", POSOLOGIA_FUNGICA, "antifungicos"), ("pos_atp", POSOLOGIA_PARASITARIA, "antiparasitarios"),
+        ("int_atb", INTERACOES, "antibioticos"), ("int_atv", INTERACOES_VIRAIS, "antivirais"),
+        ("int_atf", INTERACOES_FUNGICAS, "antifungicos"), ("int_atp", INTERACOES_ANTIPARASITARIOS, "antiparasitarios"),
+    ]
+    for kind, data, drug_tab in lista:
+        for r in data:
+            if r[0] is not None and not _ok(drug_tab, "nome_generico", r[0]):
+                drops.add(f"{kind}:{r[0]}")
+
+    # crônico: resolução por match EXATO em medicamentos.nome_generico (como o build)
+    for kind, data in [("pos_cron", POSOLOGIA_CRONICA), ("int_cron", INTERACOES_MEDICAMENTOS_CRONICOS)]:
+        for r in data:
+            if r[0] and not _ok("medicamentos", "nome_generico", r[0]):
+                drops.add(f"{kind}:{r[0]}")
+
+    # tratamentos: patologia não resolvida = registro descartado
+    trats = [
+        ("trat_atb", TRATAMENTO_PADRAO_OURO), ("trat_atv", TRATAMENTO_PADRAO_OURO_VIRAL),
+        ("trat_atf", TRATAMENTO_PADRAO_OURO_FUNGICO), ("trat_atp", TRATAMENTO_PADRAO_OURO_PARASITARIO),
+        ("trat_cron", TRATAMENTO_PADRAO_OURO_CRONICO),
+    ]
+    for kind, data in trats:
+        for r in data:
+            if r[0] and _get_patologia_id_by_substr(conn, r[0]) is None:
+                drops.add(f"{kind}:PATOLOGIA:{r[0]}")
+
+    return drops
+
+
+def report_and_ratchet_drops(conn):
+    """Relatório categorizado dos descartes + RATCHET: falha se surgir um NOVO
+    (3c). Baseline em known_unresolved.json — dívida conhecida, aceita
+    conscientemente; regressões (referência nova que não resolve) barram o build.
+    """
+    atual = collect_unresolved(conn)
+    with open(KNOWN_UNRESOLVED, encoding="utf-8") as f:
+        baseline = set(json.load(f))
+    novos = atual - baseline
+    resolvidos = baseline - atual
+
+    from collections import Counter
+    por_cat = Counter(d.split(":")[0] for d in atual)
+    print("\n── Referências não resolvidas (dado descartado no build) ──")
+    print(f"   {len(atual)} distintas | baseline aceito: {len(baseline)} | "
+          f"por categoria: {dict(por_cat)}")
+    if resolvidos:
+        print(f"   [OK] {len(resolvidos)} do baseline foram RESOLVIDAS — "
+              f"atualize known_unresolved.json removendo:")
+        for r in sorted(resolvidos):
+            print(f"        - {r}")
+    if novos:
+        print(f"   [ERRO] {len(novos)} referência(s) NOVA(S) não resolvida(s) — "
+              f"dado clínico seria descartado em silêncio:")
+        for n in sorted(novos):
+            print(f"        + {n}")
+        print("   Corrija o nome no dado-fonte, adicione um alias, ou (se "
+              "aceitável) inclua em known_unresolved.json.")
+        sys.exit(1)
+
+
 def build():
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
@@ -1664,6 +1767,7 @@ def build():
     print(f"  → {inserted} critérios inseridos, {skipped} patologias não encontradas")
 
     print_summary(conn)
+    report_and_ratchet_drops(conn)
     # Checkpoint TRUNCATE: transfere todo o WAL de volta ao arquivo principal e
     # esvazia o -wal. Deixa o artefato auto-contido (todo o dado no .sqlite), o
     # que o torna mais limpo para embarcar e seguro caso um dia seja servido de

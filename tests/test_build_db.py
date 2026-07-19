@@ -58,3 +58,38 @@ def test_alias_cobre_as_ambiguidades_conhecidas():
     assert len(build_db._PATOLOGIA_ALIAS) >= 12
     for origem, alvo in build_db._PATOLOGIA_ALIAS.items():
         assert isinstance(alvo, str) and len(alvo) > len(origem) - 5
+
+
+# ── S41: ratchet de referências não resolvidas (drops) ──────────────────────
+
+def _conn_banco():
+    return sqlite3.connect(build_db.DB_PATH)
+
+
+def test_drops_atuais_nao_excedem_o_baseline():
+    # 3c/ratchet: o build descarta silenciosamente registros cujo nome de
+    # fármaco/medicamento/patologia não resolve. O baseline versionado
+    # (known_unresolved.json) é a dívida aceita; NENHUM drop novo pode surgir
+    # sem passar por revisão (mesmo critério do build, que faz sys.exit(1)).
+    import json
+    conn = _conn_banco()
+    atual = build_db.collect_unresolved(conn)
+    with open(build_db.KNOWN_UNRESOLVED, encoding="utf-8") as f:
+        baseline = set(json.load(f))
+    novos = atual - baseline
+    assert not novos, f"drops NOVOS não baselinados: {sorted(novos)}"
+
+
+def test_ratchet_falha_em_drop_novo(monkeypatch, tmp_path):
+    # Um baseline menor que o conjunto atual (simulando um drop novo) deve
+    # fazer report_and_ratchet_drops chamar sys.exit(1).
+    import json
+    conn = _conn_banco()
+    atual = sorted(build_db.collect_unresolved(conn))
+    assert atual, "esperava ao menos um drop conhecido para o teste"
+    baseline_menor = tmp_path / "baseline.json"
+    baseline_menor.write_text(json.dumps(atual[1:]), encoding="utf-8")  # falta 1
+    monkeypatch.setattr(build_db, "KNOWN_UNRESOLVED", str(baseline_menor))
+    with pytest.raises(SystemExit) as exc:
+        build_db.report_and_ratchet_drops(conn)
+    assert exc.value.code == 1

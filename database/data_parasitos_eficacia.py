@@ -63,7 +63,13 @@ EFICACIA_PARASITARIA = {
          "1ª linha fase aguda: cura parasitológica > 80%; 5 mg/kg/dia em 2 doses por 60 dias; dermatose (rash) em 30%, neuropatia periférica, leucopenia — monitorar; iniciar o mais precocemente possível"),
         ("Benznidazol", "Chagas Crônica", 70.0, 1, "B", 5.0, "PCDT-CHAGAS", 2022,
          "Fase crônica indeterminada: 75-80% cura sorológica em jovens (ensaios BENEFIT e TRAENA); cardiopatia moderada: benefício discutível; contraindicado IRC grave, gravidez, hepatopatia grave"),
-        ("Nifurtimox",  "Doença de Chagas", 75.0, 2, "B", 5.0, "PCDT-CHAGAS", 2022,
+        # Nifurtimox 2ª linha aplica-se às DUAS fases onde o benznidazol é
+        # usado (PCDT-CHAGAS/MS: alternativa em falha/intolerância) — duplicado
+        # em Aguda e Crônica (S40, antes o substring genérico "Doença de Chagas"
+        # casava ambas e grudava só numa arbitrária).
+        ("Nifurtimox",  "Doença de Chagas Aguda", 75.0, 2, "B", 5.0, "PCDT-CHAGAS", 2022,
+         "2ª linha: falha ou intolerância ao benznidazol; 8-10 mg/kg/dia adultos, 15-20 mg/kg/dia crianças por 60-90 dias; tolerância inferior; disponível via MS mediante solicitação"),
+        ("Nifurtimox",  "Doença de Chagas Crônica", 75.0, 2, "B", 5.0, "PCDT-CHAGAS", 2022,
          "2ª linha: falha ou intolerância ao benznidazol; 8-10 mg/kg/dia adultos, 15-20 mg/kg/dia crianças por 60-90 dias; tolerância inferior; disponível via MS mediante solicitação"),
     ],
 

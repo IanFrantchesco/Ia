@@ -156,17 +156,61 @@ def insert_patologias(conn):
         )
 
 
+# Substrings de patologia que casariam >1 patologia por LIKE e, sem correção,
+# grudariam o dado numa doença ARBITRÁRIA. Mapeiam para o nome EXATO da
+# patologia PRETENDIDA — decidido caso a caso pela droga do registro e
+# confirmado em fonte oficial brasileira (PCDT/MS, SBC, SBPT). Ver o PR do S40.
+# ('Influenza' e 'Imunocomprometidos' estavam ATIVAMENTE errados: gripe caía em
+# PAC-Haemophilus (bacteriana) e a toxoplasmose caía em Listeriose.)
+_PATOLOGIA_ALIAS = {
+    'Influenza': 'Influenza (gripe sazonal e pandêmica)',
+    'Imunocomprometidos': 'Toxoplasmose em Imunocomprometidos (HIV/AIDS)',
+    'Hepatite B': 'Hepatite B (aguda e crônica)',
+    'Bipolar Tipo I': 'Transtorno Bipolar Tipo I',
+    'Visceral': 'Leishmaniose Visceral (Calazar)',
+    'Compensada': 'Cirrose Hepática Compensada (Child-Pugh A)',
+    'HIV/AIDS': 'HIV/AIDS (infecção aguda, crônica e AIDS estabelecida)',
+    'Idiopática': 'Hipertensão Pulmonar Arterial Idiopática',
+    'Alto Risco Cardiovascular': 'Diabetes Mellitus Tipo 2 com Complicações / Alto Risco Cardiovascular',
+    'Luminal': 'Câncer de Mama — Luminal (Hormônio-Positivo, HER2-Negativo)',
+    'Ressecável': 'Câncer Colorretal — Estágios I-III (Ressecável)',
+    'Anticoagulação': 'Fibrilação Atrial — Anticoagulação / Controle de Ritmo',
+    # Posologias crônicas gerais → variante BASE da doença (a droga deixa claro:
+    # Metformina/anti-hipertensivos/Levotiroxina são o tratamento base, não a
+    # sub-variante Gestação/Resistente/com Complicações).
+    'Diabetes mellitus tipo 2': 'Diabetes Mellitus Tipo 2 (Sem Complicações)',
+    'Hipertensão Arterial': 'Hipertensão Arterial Sistêmica — Estágio 1',
+    'Hipotireoidismo': 'Hipotireoidismo Primário (Adulto)',
+}
+
+
 def _get_patologia_id_by_substr(conn, substr):
-    """Busca patologia por substring do nome. Tenta match exato antes de LIKE."""
+    """Resolve uma patologia por nome: alias conhecido → match exato → LIKE único.
+
+    3f (risco clínico): antes o fallback LIKE usava ``.fetchone()`` SEM
+    ``ORDER BY``/``LIMIT`` — se a substring casasse >1 patologia, escolhia uma
+    ARBITRÁRIA, grudando tratamento/eficácia na doença errada, silenciosamente.
+    Agora: (1) substrings ambíguas conhecidas são remapeadas para o nome exato
+    (``_PATOLOGIA_ALIAS``); (2) se o LIKE ainda casar >1, o build FALHA com a
+    lista de candidatos, forçando o dado-fonte a ser específico.
+    """
     if substr is None:
         return None
+    substr = _PATOLOGIA_ALIAS.get(substr, substr)
     row = conn.execute("SELECT id FROM patologias WHERE nome = ?", (substr,)).fetchone()
     if row:
         return row[0]
-    row = conn.execute(
-        "SELECT id FROM patologias WHERE nome LIKE ?", (f"%{substr}%",)
-    ).fetchone()
-    return row[0] if row else None
+    rows = conn.execute(
+        "SELECT id, nome FROM patologias WHERE nome LIKE ?", (f"%{substr}%",)
+    ).fetchall()
+    if len(rows) > 1:
+        candidatos = [r[1] for r in rows]
+        raise ValueError(
+            f"Substring de patologia AMBÍGUA: {substr!r} casa {len(rows)} "
+            f"patologias {candidatos} — torne o nome no dado-fonte específico "
+            f"ou adicione um _PATOLOGIA_ALIAS."
+        )
+    return rows[0][0] if rows else None
 
 
 def insert_eficacia(conn):

@@ -186,7 +186,38 @@ _PATOLOGIA_ALIAS = {
     'Diabetes mellitus tipo 2': 'Diabetes Mellitus Tipo 2 (Sem Complicações)',
     'Hipertensão Arterial': 'Hipertensão Arterial Sistêmica — Estágio 1',
     'Hipotireoidismo': 'Hipotireoidismo Primário (Adulto)',
+    # Normalização de nome (S42): a patologia existe sob outro nome.
+    'Pneumocistose': 'Pneumonia por Pneumocystis jirovecii (PCP)',
 }
+
+
+# Normalização de NOME de medicamento crônico (S42): o fármaco JÁ existe na
+# tabela ``medicamentos``, o dado-fonte só usa uma variante (abreviação, caixa,
+# acento) que não casava no match exato. Alvo = nome exato do formulário
+# (verificado contra o banco). NÃO é "dado faltando" — é o mesmo fármaco.
+_MEDICAMENTO_ALIAS = {
+    'AAS': 'Ácido Acetilsalicílico (antiagregante)',
+    'Alendronato sódico': 'Alendronato',
+    'Isossorbida mononitrato': 'Isossorbida Mononitrato',
+    'Lítio': 'Lítio (carbonato)',
+    'Lítio carbonato': 'Lítio (carbonato)',
+    'Metoprolol succinato': 'Metoprolol Succinato',
+    'Metotrexato': 'Metotrexato (reumatológico)',  # contexto crônico = AR/psoríase
+    'Semaglutida': 'Semaglutida SC',               # dose SC/semana no registro
+    'Sulfato ferroso': 'Sulfato Ferroso',
+}
+
+
+def _get_medicamento_cronico_id(conn, nome):
+    """Resolve um medicamento crônico por nome exato, aplicando antes o
+    ``_MEDICAMENTO_ALIAS`` (normalização de variantes). Retorna id ou None."""
+    if not nome:
+        return None
+    nome = _MEDICAMENTO_ALIAS.get(nome, nome)
+    row = conn.execute(
+        "SELECT id FROM medicamentos WHERE nome_generico=?", (nome,)
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _get_patologia_id_by_substr(conn, substr):
@@ -1322,13 +1353,10 @@ def insert_posologia_cronica(conn):
     for rec in POSOLOGIA_CRONICA:
         (med_nome, pat_substr, pop, dose, freq, via,
          dur_txt, aj_renal, aj_hep, meta, obs, fonte_sigla) = rec
-        row_id = conn.execute(
-            "SELECT id FROM medicamentos WHERE nome_generico=?", (med_nome,)
-        ).fetchone()
-        if row_id is None:
+        med_id = _get_medicamento_cronico_id(conn, med_nome)
+        if med_id is None:
             skipped += 1
             continue
-        med_id = row_id[0]
         pat_id = _get_patologia_id_by_substr(conn, pat_substr)
         try:
             fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
@@ -1351,13 +1379,10 @@ def insert_interacoes_medicamentos_cronicos(conn):
     for rec in INTERACOES_MEDICAMENTOS_CRONICOS:
         (med_nome, med_inter, classe_inter,
          mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
-        row_id = conn.execute(
-            "SELECT id FROM medicamentos WHERE nome_generico=?", (med_nome,)
-        ).fetchone()
-        if row_id is None:
+        med_id = _get_medicamento_cronico_id(conn, med_nome)
+        if med_id is None:
             skipped += 1
             continue
-        med_id = row_id[0]
         try:
             fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
         except ValueError:
@@ -1453,10 +1478,10 @@ def collect_unresolved(conn):
             if r[0] is not None and not _ok(drug_tab, "nome_generico", r[0]):
                 drops.add(f"{kind}:{r[0]}")
 
-    # crônico: resolução por match EXATO em medicamentos.nome_generico (como o build)
+    # crônico: mesma resolução do build (alias de nome + match exato)
     for kind, data in [("pos_cron", POSOLOGIA_CRONICA), ("int_cron", INTERACOES_MEDICAMENTOS_CRONICOS)]:
         for r in data:
-            if r[0] and not _ok("medicamentos", "nome_generico", r[0]):
+            if r[0] and _get_medicamento_cronico_id(conn, r[0]) is None:
                 drops.add(f"{kind}:{r[0]}")
 
     # tratamentos: patologia não resolvida = registro descartado

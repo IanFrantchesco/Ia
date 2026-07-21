@@ -77,3 +77,28 @@ def test_banco_nao_esta_vazio(db):
     # Sanidade mínima: o build populou as tabelas centrais.
     assert _count(db, "SELECT COUNT(*) FROM patologias") > 0
     assert _count(db, "SELECT COUNT(*) FROM categorias_patologias") > 0
+
+
+# Toda linha clínica (eficácia/posologia/tratamento/interação) DEVE ter fonte
+# vinculada — rastreabilidade é requisito clínico. O build engole em silêncio uma
+# sigla de fonte que não resolve (fonte_id vira NULL); este guard trava isso no
+# CI. Sem ele, um typo de sigla serviria dado clínico sem proveniência.
+_TABELAS_COM_FONTE = [
+    "eficacia_antibiotico", "eficacia_antiviral", "eficacia_antifungico",
+    "eficacia_antiparasitario",
+    "posologia", "posologia_viral", "posologia_fungica",
+    "posologia_parasitaria", "posologia_cronica",
+    "tratamento_padrao_ouro", "tratamento_padrao_ouro_viral",
+    "tratamento_padrao_ouro_fungico", "tratamento_padrao_ouro_parasitario",
+    "tratamento_padrao_ouro_cronico",
+    "interacoes_medicamentosas", "interacoes_antivirais",
+    "interacoes_antifungicos", "interacoes_antiparasitarios",
+    "interacoes_medicamentos",
+]
+
+
+@pytest.mark.parametrize("tabela", _TABELAS_COM_FONTE)
+def test_toda_linha_clinica_tem_fonte(db, tabela):
+    # fonte_id NULL = dado clínico sem proveniência (sigla não resolveu no build).
+    orfas = _count(db, f"SELECT COUNT(*) FROM {tabela} WHERE fonte_id IS NULL")
+    assert orfas == 0, f"{orfas} linha(s) em {tabela} sem fonte vinculada"

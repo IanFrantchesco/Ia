@@ -1,13 +1,5 @@
 [
-  "efic_atf:Atovaquona",
-  "efic_atf:Clindamicina",
-  "efic_atf:Pentamidina",
-  "efic_atf:Sulfadiazina + Trimetoprima",
-  "int_atf:Pentamidina (isetionato)",
-  "int_atf:Sulfametoxazol + Trimetoprima",
   "int_cron:IECA / BRA / Espironolactona — combinação tripla",
   "int_cron:Metronidazol",
-  "pos_atf:Pentamidina (isetionato)",
-  "pos_atf:Sulfametoxazol + Trimetoprima",
   "trat_atf:PATOLOGIA:Candidemia neonatal"
 ]

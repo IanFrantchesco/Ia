@@ -325,6 +325,29 @@ CLASSES_ANTIFUNGICOS = [
      "Microtúbulos fúngicos (tubulina)"),
     ("Iodeto de Potássio", "Mecanismo incerto — possível imunomodulação e atividade direta",
      "Incerto — possivelmente ergosterol e resposta imune do hospedeiro"),
+    # ── Antimicrobianos usados no domínio fúngico (S46) ───────────────────────
+    # Fármacos que NÃO são antifúngicos clássicos (azol/polieno/equinocandina),
+    # mas são o tratamento de patologias do domínio fúngico — sobretudo a PCP
+    # (Pneumocystis jirovecii, reclassificado como fungo) e a sulfa da
+    # paracoccidioidomicose. Registrados aqui pelo mesmo motivo que o sistema
+    # duplica fármacos entre catálogos de domínio (ex.: Metronidazol em
+    # antibióticos e antiparasitários): cada domínio resolve seus próprios nomes.
+    ("Sulfamídicos (Antifolato)",
+     "Inibição sequencial da via do folato — sulfametoxazol bloqueia a di-hidropteroato sintase "
+     "e a trimetoprima a di-hidrofolato redutase, colapsando a síntese de purinas do patógeno",
+     "Enzimas da via do folato (DHPS e DHFR)"),
+    ("Diamidinas Aromáticas",
+     "Ligação ao DNA (sulco menor) e interferência no metabolismo do folato e na fosforilação "
+     "oxidativa do patógeno",
+     "DNA e enzimas do metabolismo energético do patógeno"),
+    ("Lincosamidas",
+     "Inibição da síntese proteica por ligação à subunidade ribossomal 50S (associada à primaquina "
+     "na PCP)",
+     "Subunidade ribossomal 50S"),
+    ("Naftoquinonas",
+     "Inibição do complexo citocromo bc1 (complexo III) da cadeia respiratória — colapso do "
+     "potencial de membrana mitocondrial do patógeno",
+     "Complexo III (citocromo bc1) da cadeia respiratória"),
 ]
 
 # (nome_generico, nome_comercial_ou_None, classe_nome, via_administracao, disponivel_sus, anvisa_registrado, observacoes)
@@ -484,4 +507,24 @@ ANTIFUNGICOS = [
      "Azólicos — Imidazólicos", "tópico", False, True,
      "Esmalte tópico para onicomicose superficial e distal leve-moderada; "
      "aplicação semanal; pode ser associada à terbinafina oral; não disponível no SUS"),
+
+    # ── Antimicrobianos do domínio fúngico — PCP e sulfa da PCM (S46) ─────────
+    ("Sulfametoxazol + Trimetoprima", "Bactrim / Cotrimoxazol",
+     "Sulfamídicos (Antifolato)", "iv/oral", True, True,
+     "Cotrimoxazol. TRATAMENTO DE ESCOLHA da PCP (15-20 mg/kg/dia de trimetoprima, IV ou VO em "
+     "4 doses × 21 dias) e opção de baixo custo na paracoccidioidomicose leve-moderada. "
+     "Monitorar função renal, K+ e hemograma. Disponível no SUS (RENAME)."),
+    ("Pentamidina (isetionato)", "Pentacarinat",
+     "Diamidinas Aromáticas", "iv", True, True,
+     "Alternativa ao SMX-TMP na PCP em alergia grave não controlável (4 mg/kg/dia IV × 21 dias). "
+     "Toxicidade: hipoglicemia grave, hipotensão, nefrotoxicidade, pancreatite, arritmia (QT). "
+     "Forma inalatória: apenas profilaxia, não tratamento de PCP ativa."),
+    ("Clindamicina", "Dalacin",
+     "Lincosamidas", "iv/oral", True, True,
+     "PCP de 2ª linha em associação com primaquina (clindamicina 600 mg IV 8/8h + primaquina "
+     "30 mg/dia VO × 21 dias). Primaquina contraindicada em deficiência de G6PD — testar antes."),
+    ("Atovaquona", "Mepron",
+     "Naftoquinonas", "oral", False, False,
+     "Alternativa oral para PCP leve-moderada em intolerância ao SMX-TMP (750 mg VO 12/12h × 21 "
+     "dias, com refeição gordurosa). Disponibilidade limitada no Brasil (não incorporado ao SUS)."),
 ]

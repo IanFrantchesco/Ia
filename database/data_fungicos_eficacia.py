@@ -27,10 +27,11 @@ EFICACIA_FUNGICA = {
          "0,7-1,0 mg/kg/dia IV × 2-4 semanas (indução), depois transição para itraconazol; "
          "nefrotoxicidade dose-limitante — monitorar creatinina diariamente"),
 
-        ("Sulfadiazina + Trimetoprima", "Paracoccidioidomicose (Blastomicose Sul-Americana)", 78.0, 2, "B", 3.0,
+        ("Sulfametoxazol + Trimetoprima", "Paracoccidioidomicose (Blastomicose Sul-Americana)", 78.0, 2, "B", 3.0,
          "PCDT-PARACOC", 2022,
-         "Alternativa de baixo custo; formas leves e moderadas; sulfadiazina 500 mg + trimetoprima 80 mg "
-         "VO 12/12h × 24 meses; maior taxa de recidiva que itraconazol; opção em ausência de itraconazol"),
+         "Alternativa de baixo custo; formas leves e moderadas; cotrimoxazol (sulfametoxazol 800 mg + "
+         "trimetoprima 160 mg) VO 12/12h × 24 meses; maior taxa de recidiva que itraconazol; "
+         "opção em ausência de itraconazol (II Consenso Brasileiro em Paracoccidioidomicose, 2017)"),
 
         ("Voriconazol", "Paracoccidioidomicose (Blastomicose Sul-Americana)", 85.0, 2, "B", 0.0,
          "PCDT-PARACOC", 2022,
@@ -413,14 +414,14 @@ EFICACIA_FUNGICA = {
     # PNEUMOCYSTIS JIROVECII
     # ══════════════════════════════════════════════════════════════════
     "Pneumocystis jirovecii": [
-        ("Sulfadiazina + Trimetoprima", "Pneumonia por Pneumocystis jirovecii (PCP)", 85.0, 1, "A", 3.0,
+        ("Sulfametoxazol + Trimetoprima", "Pneumonia por Pneumocystis jirovecii (PCP)", 85.0, 1, "A", 3.0,
          "PCDT-HIV-FUNG", 2022,
          "SMX-TMP é o TRATAMENTO DE ESCOLHA para PCP; 15-20 mg/kg/dia de TMP IV ou VO (em 4 doses) × 21 dias; "
          "SpO₂ < 70 mmHg de PaO₂: adicionar corticoide (prednisona 40 mg 2x/dia × 5 dias → desmame); "
          "profilaxia primária: SMX-TMP 1 cp dupla força/dia (ou 3x/semana) para CD4 < 200; "
          "profilaxia secundária: SMX-TMP 1 cp simples/dia indefinidamente até CD4 > 200 por 3 meses"),
 
-        ("Pentamidina", "Pneumonia por Pneumocystis jirovecii (PCP)", 70.0, 2, "A", 1.0,
+        ("Pentamidina (isetionato)", "Pneumonia por Pneumocystis jirovecii (PCP)", 70.0, 2, "A", 1.0,
          "PCDT-HIV-FUNG", 2022,
          "Alternativa ao SMX-TMP em alergia grave não controlável; "
          "4 mg/kg/dia IV × 21 dias; toxicidade: hipoglicemia grave, hipotensão, nefrotoxicidade, arritmia; "

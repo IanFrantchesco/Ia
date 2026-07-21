@@ -93,3 +93,42 @@ def test_ratchet_falha_em_drop_novo(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         build_db.report_and_ratchet_drops(conn)
     assert exc.value.code == 1
+
+
+# ── S45: fan-out de interações ancoradas em classe ──────────────────────────
+
+def test_fanout_alvos_todos_existem_no_catalogo():
+    # Cada fármaco listado no mapa de fan-out DEVE existir em `medicamentos`
+    # (nome_generico exato, via alias). Um typo no mapa quebra aqui e no build.
+    conn = _conn_banco()
+    for anchor, membros in build_db._INTERACAO_FANOUT.items():
+        assert membros, f"fan-out de '{anchor}' está vazio"
+        for nome in membros:
+            assert build_db._get_medicamento_cronico_id(conn, nome) is not None, \
+                f"'{nome}' (de '{anchor}') não resolve em medicamentos"
+
+
+def test_fanout_expande_para_todos_os_membros():
+    # Uma âncora-classe farmacodinâmica expande para 1 id por membro nomeado.
+    conn = _conn_banco()
+    ids = build_db._fanout_interacao_ids(
+        conn, "Beta-bloqueadores (atenolol, metoprolol, propranolol)")
+    assert ids is not None and len(ids) == 3
+    assert len(set(ids)) == 3  # três fármacos distintos
+
+
+def test_fanout_membro_especifico_nao_alarga_para_a_classe():
+    # CYP2D6 é efeito de MEMBRO: expande só p/ Fluoxetina e Paroxetina — nunca
+    # p/ Sertralina/Escitalopram (que não são inibidores fortes de CYP2D6).
+    alvo = build_db._INTERACAO_FANOUT["Fluoxetina / Paroxetina (inibidores CYP2D6)"]
+    assert set(alvo) == {"Fluoxetina", "Paroxetina"}
+    assert "Sertralina" not in alvo and "Escitalopram" not in alvo
+
+
+def test_fanout_anchor_nao_e_drop():
+    # Uma âncora do fan-out NÃO pode aparecer como drop (ela resolve p/ os
+    # fármacos específicos que expande).
+    conn = _conn_banco()
+    drops = build_db.collect_unresolved(conn)
+    for anchor in build_db._INTERACAO_FANOUT:
+        assert f"int_cron:{anchor}" not in drops

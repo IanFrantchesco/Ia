@@ -205,6 +205,15 @@ _MEDICAMENTO_ALIAS = {
     'Metotrexato': 'Metotrexato (reumatológico)',  # contexto crônico = AR/psoríase
     'Semaglutida': 'Semaglutida SC',               # dose SC/semana no registro
     'Sulfato ferroso': 'Sulfato Ferroso',
+    # S43 — mais variantes que já existem em `medicamentos` (nome alternativo/
+    # sal/grafia); alvo verificado contra o banco.
+    'Cianocobalamina (Vitamina B12)': 'Cianocobalamina',
+    'Levodopa / Carbidopa': 'Levodopa/Carbidopa',
+    'Levodopa + Carbidopa': 'Levodopa/Carbidopa',
+    'Mesalazina (5-ASA)': 'Mesalazina',
+    'Salbutamol (Albuterol)': 'Salbutamol',
+    'Ácido valproico / Valproato': 'Ácido Valproico',
+    'Ácido valproico / Valproato de sódio': 'Ácido Valproico',
 }
 
 

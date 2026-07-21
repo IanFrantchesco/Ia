@@ -956,7 +956,7 @@ INTERACOES_MEDICAMENTOS_CRONICOS = [
      "Preferir paracetamol como analgésico.",
      "SBC-HAS"),
 
-    ("IECA / BRA / Espironolactona — combinação tripla", "Associação das três classes",
+    ("Espironolactona", "IECA (enalapril) + BRA (losartana) — bloqueio triplo do SRAA",
      "Bloqueio do sistema renina-angiotensina-aldosterona",
      "Bloqueio simultâneo do SRAA em três pontos distintos resulta em risco cumulativo "
      "de hipercalemia e IRA superiores à combinação dupla",

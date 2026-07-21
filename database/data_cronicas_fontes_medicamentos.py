@@ -457,6 +457,10 @@ CLASSES_MEDICAMENTOS = [
      "Agonismo do receptor de glicocorticoide → transrepressão de genes pró-inflamatórios (NF-κB/AP-1) e transativação de anti-inflamatórios → efeito anti-inflamatório e imunossupressor amplo",
      "Receptor de glicocorticoide (GR) citoplasmático/nuclear",
      "endocrino_metabolico"),
+    ("Nitroimidazóis (Antimicrobianos)",
+     "Redução do grupo nitro em ambiente anaeróbio → radicais citotóxicos que fragmentam o DNA do microrganismo",
+     "DNA de bactérias anaeróbias e protozoários",
+     "outros"),
 ]
 
 
@@ -910,4 +914,16 @@ MEDICAMENTOS = [
      "Corticosteroides Sistêmicos", "oral", True, True,
      "Corticoide sistêmico anti-inflamatório/imunossupressor; RENAME (comp. 5/20 mg); "
      "desmame gradual se uso prolongado"),
+    # Registrado no domínio crônico para hospedar sua interação clinicamente
+    # relevante (álcool → reação dissulfiram-like); RENAME. Uso agudo, não crônico.
+    ("Metronidazol", "Flagyl / Metronidazol Genérico",
+     "Nitroimidazóis (Antimicrobianos)", "oral", True, True,
+     "Antimicrobiano para anaeróbios e protozoários (RENAME); evitar álcool durante o uso e por "
+     "48h após (reação dissulfiram-like); sabor metálico, neuropatia periférica em uso prolongado"),
+    # Formulação TÓPICA (rosácea): catalogada à parte para não herdar a via oral
+    # nem a interação sistêmica com álcool (absorção sistêmica desprezível).
+    ("Metronidazol tópico", "Rozex / Metronidazol Gel",
+     "Nitroimidazóis (Antimicrobianos)", "tópico", True, True,
+     "Gel/creme 0,75-1% para rosácea papulopustulosa (1-2x/dia); absorção sistêmica desprezível — "
+     "não carrega a interação com álcool da forma oral; anti-inflamatório tópico de 1ª linha"),
 ]

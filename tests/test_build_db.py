@@ -71,6 +71,7 @@ def test_drops_atuais_nao_excedem_o_baseline():
     # fármaco/medicamento/patologia não resolve. O baseline versionado
     # (known_unresolved.json) é a dívida aceita; NENHUM drop novo pode surgir
     # sem passar por revisão (mesmo critério do build, que faz sys.exit(1)).
+    # Após S47 o baseline é VAZIO — o ratchet passa a exigir zero drops.
     import json
     conn = _conn_banco()
     atual = build_db.collect_unresolved(conn)
@@ -80,18 +81,26 @@ def test_drops_atuais_nao_excedem_o_baseline():
     assert not novos, f"drops NOVOS não baselinados: {sorted(novos)}"
 
 
-def test_ratchet_falha_em_drop_novo(monkeypatch, tmp_path):
-    # Um baseline menor que o conjunto atual (simulando um drop novo) deve
-    # fazer report_and_ratchet_drops chamar sys.exit(1).
+def test_baseline_esta_zerado():
+    # Marco S47: toda a dívida de referências não resolvidas foi quitada; o
+    # baseline versionado é vazio e o build tolera zero descartes.
     import json
-    conn = _conn_banco()
-    atual = sorted(build_db.collect_unresolved(conn))
-    assert atual, "esperava ao menos um drop conhecido para o teste"
-    baseline_menor = tmp_path / "baseline.json"
-    baseline_menor.write_text(json.dumps(atual[1:]), encoding="utf-8")  # falta 1
-    monkeypatch.setattr(build_db, "KNOWN_UNRESOLVED", str(baseline_menor))
+    with open(build_db.KNOWN_UNRESOLVED, encoding="utf-8") as f:
+        assert json.load(f) == [], "known_unresolved.json deveria estar vazio"
+    assert build_db.collect_unresolved(_conn_banco()) == set()
+
+
+def test_ratchet_falha_em_drop_novo(monkeypatch, tmp_path):
+    # Um drop presente no conjunto atual mas ausente do baseline (drop NOVO)
+    # deve fazer report_and_ratchet_drops chamar sys.exit(1). Independe de o
+    # banco real ter drops: injeta um conjunto sintético.
+    import json
+    monkeypatch.setattr(build_db, "collect_unresolved", lambda conn: {"fake:drop_novo"})
+    baseline_vazio = tmp_path / "baseline.json"
+    baseline_vazio.write_text(json.dumps([]), encoding="utf-8")
+    monkeypatch.setattr(build_db, "KNOWN_UNRESOLVED", str(baseline_vazio))
     with pytest.raises(SystemExit) as exc:
-        build_db.report_and_ratchet_drops(conn)
+        build_db.report_and_ratchet_drops(_conn_banco())
     assert exc.value.code == 1
 
 
@@ -161,6 +170,41 @@ def test_pcp_bloco_nao_tem_mais_drops():
                     "pos_atf:Pentamidina (isetionato)",
                     "pos_atf:Sulfametoxazol + Trimetoprima"):
         assert prefixo not in drops
+
+
+def test_metronidazol_topico_e_sistemico_sao_distintos():
+    # S47: registrar o Metronidazol sistêmico não pode contaminar o tópico
+    # (rosácea). São entradas distintas; só o sistêmico carrega a interação com
+    # álcool (o tópico tem absorção sistêmica desprezível).
+    conn = _conn_banco()
+    sis = conn.execute(
+        "SELECT id, via_administracao FROM medicamentos WHERE nome_generico='Metronidazol'"
+    ).fetchone()
+    top = conn.execute(
+        "SELECT id, via_administracao FROM medicamentos WHERE nome_generico='Metronidazol tópico'"
+    ).fetchone()
+    assert sis and top and sis[0] != top[0]
+    assert top[1] == "tópico"
+    n_sis = conn.execute(
+        "SELECT COUNT(*) FROM interacoes_medicamentos WHERE medicamento_id=?", (sis[0],)
+    ).fetchone()[0]
+    n_top = conn.execute(
+        "SELECT COUNT(*) FROM interacoes_medicamentos WHERE medicamento_id=?", (top[0],)
+    ).fetchone()[0]
+    assert n_sis >= 1 and n_top == 0
+
+
+def test_candidemia_neonatal_e_patologia_ligada_ao_dominio_fungico():
+    # S47: patologia própria (dosagem por peso) precisa do vínculo patologia_fungo
+    # para aparecer na listagem do domínio fúngico.
+    conn = _conn_banco()
+    pid = conn.execute(
+        "SELECT id FROM patologias WHERE nome='Candidemia neonatal'").fetchone()
+    assert pid is not None, "patologia Candidemia neonatal não inserida"
+    n = conn.execute(
+        "SELECT COUNT(*) FROM patologia_fungo WHERE patologia_id=?", (pid[0],)
+    ).fetchone()[0]
+    assert n >= 1, "Candidemia neonatal sem vínculo a fungo (não apareceria na lista)"
 
 
 def test_pcp_primeira_linha_e_smx_tmp_nao_fallback():

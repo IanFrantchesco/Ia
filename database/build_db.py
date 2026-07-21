@@ -188,6 +188,10 @@ _PATOLOGIA_ALIAS = {
     'Hipotireoidismo': 'Hipotireoidismo Primário (Adulto)',
     # Normalização de nome (S42): a patologia existe sob outro nome.
     'Pneumocistose': 'Pneumonia por Pneumocystis jirovecii (PCP)',
+    # S47: 'Candidemia' (adulto) tornou-se ambíguo ao criar 'Candidemia neonatal';
+    # o substring genérico resolve para a forma adulta (a neonatal é referida pelo
+    # nome completo, que casa exato e não passa por aqui).
+    'Candidemia': 'Candidemia e Candidíase Invasiva',
 }
 
 
@@ -665,6 +669,10 @@ def insert_patologia_fungo_links(conn):
         ("Fusarium solani",                  "Micetoma Fúngico",                 "principal", 30.0),
         ("Exophiala jeanselmei",             "Feohifomicose",                    "principal", 30.0),
         ("Bipolaris spicifera",              "Rinossinusite Fúngica",            "secundario", 15.0),
+        # S47: Candidemia neonatal é patologia própria (dosagem por peso); liga ao
+        # agente para aparecer na listagem do domínio fúngico (card via tratamento).
+        ("Candida albicans",                 "Candidemia neonatal",              "principal", 60.0),
+        ("Candida parapsilosis",             "Candidemia neonatal",              "secundario", 30.0),
     ]
     for fungo_nome, pat_substr, papel, freq in extras:
         try:

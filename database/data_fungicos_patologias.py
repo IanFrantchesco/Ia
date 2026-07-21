@@ -85,6 +85,19 @@ PATOLOGIAS_FUNGICAS = [
         "SBI-CAND"
     ),
     (
+        "Candidemia neonatal",
+        "P37.5", "Micoses Oportunistas Invasivas",
+        "Candidíase invasiva/candidemia no período neonatal, sobretudo em recém-nascidos "
+        "prematuros de muito baixo peso em UTI neonatal; manejo distinto do adulto — "
+        "anfotericina B desoxicolato de 1ª linha, dose por peso, e profilaxia com fluconazol "
+        "em UTINs de alta incidência; requer fundoscopia e ecocardiograma.",
+        False, None,
+        "media", "alta",
+        "Recém-nascidos prematuros (< 1000 g ou < 28 semanas); cateter venoso central; "
+        "nutrição parenteral prolongada; uso prévio de antibióticos de amplo espectro",
+        "SBI-CAND"
+    ),
+    (
         "Candidíase Orofaríngea (Sapinho / Muguete)",
         "B37.0", "Micoses Oportunistas Invasivas",
         "Infecção por Candida albicans da mucosa oral e orofaringe; placas brancas removíveis com eritema subjacente; "

@@ -538,7 +538,7 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
         "Anfotericina B inalatória (uso compassivo em hemoptise refratária sem condições cirúrgicas)",
         "Tuberculose prévia é o principal fator de risco no Brasil. "
         "Instilação intracavitária de anfotericina B guiada por TC pode ser tentada em casos selecionados.",
-        "B", "II", "SBI-ASPER", 2022
+        "B", "II", "SBI-ASPERG", 2022
     ),
     (
         "Aspergilose Broncopulmonar Alérgica (ABPA)",
@@ -553,7 +553,7 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
         "Posaconazol 300 mg VO 24/24h — ABPA refratária em fibrose cística",
         "Monitorar níveis séricos de itraconazol (alvo: > 1 mg/L). IgE total e IgE específica anti-Aspergillus "
         "são marcadores de atividade. Broncodilatadores e fisioterapia respiratória são coadjuvantes essenciais.",
-        "A", "I", "SBI-ASPER", 2022
+        "A", "I", "SBI-ASPERG", 2022
     ),
     (
         "Rinossinusite Fúngica",
@@ -571,7 +571,7 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
         "Mucormicose nasal-orbital-cerebral é emergência — mobilizar cirurgia em < 24h. "
         "Controle glicêmico rígido (DM) e redução de imunossupressão são fundamentais. "
         "Oxigenoterapia hiperbárica pode ser coadjuvante em centros especializados.",
-        "A", "II", "SBI-ASPER", 2022
+        "A", "II", "SBI-ASPERG", 2022
     ),
     (
         "Dermatofitose Ungueal e Cutânea por Tricofíton",
@@ -588,7 +588,7 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
         "Confirmação micológica (cultura ou PCR) antes de tratar onicomicose. "
         "Evitar esmaltes e calçados fechados úmidos. Taxa de recidiva alta — higiene e prevenção essenciais. "
         "Amorolfina laca ungueal 5% pode ser associada ao tratamento sistêmico.",
-        "A", "I", "SBD-MICOS", 2022
+        "A", "I", "SBD-MICOSES", 2022
     ),
     (
         "Tinea Corporis, Cruris e Faciei",
@@ -606,7 +606,7 @@ TRATAMENTO_PADRAO_OURO_FUNGICO = [
         "Evitar corticosteroide tópico isolado — agrava o quadro (tinea incógnita). "
         "Tinea cruris: tratar tinea pedis associada para evitar reinfecção. "
         "Roupas largas e secas reduzem recidiva.",
-        "A", "I", "SBD-MICOS", 2022
+        "A", "I", "SBD-MICOSES", 2022
     ),
     (
         "Pneumonia por Pneumocystis jirovecii (PCP)",

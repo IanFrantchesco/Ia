@@ -628,9 +628,11 @@ CREATE TABLE IF NOT EXISTS eficacia_antiparasitario (
     parasito_id         INTEGER NOT NULL REFERENCES parasitos(id),
     antiparasitario_id  INTEGER NOT NULL REFERENCES antiparasitarios(id),
     patologia_id        INTEGER REFERENCES patologias(id),
-    eficacia_pct        REAL,
-    linha_tratamento    INTEGER DEFAULT 1,
-    nivel_evidencia     TEXT,
+    -- CHECK igualados às tabelas de eficácia irmãs (S49): a única que estava
+    -- sem enforcement de faixa/enum no schema. Dados atuais já cumprem.
+    eficacia_pct        REAL CHECK(eficacia_pct BETWEEN 0 AND 100),
+    linha_tratamento    INTEGER DEFAULT 1 CHECK(linha_tratamento IN (1,2,3)),
+    nivel_evidencia     TEXT CHECK(nivel_evidencia IN ('A','B','C','D')),
     resistencia_br_pct  REAL,
     fonte_id            INTEGER REFERENCES fontes_oficiais(id),
     ano_dado            INTEGER,

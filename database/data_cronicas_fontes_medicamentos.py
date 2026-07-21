@@ -448,6 +448,15 @@ CLASSES_MEDICAMENTOS = [
      "Inibição covalente e irreversível das lipases gástrica e pancreática → ↓ hidrólise e absorção de triglicerídeos da dieta em ~30% → balanço calórico negativo; sem ação sistêmica significativa",
      "Lipase pancreática (triacilglicerol lipase) e gástrica no lúmen do trato GI — orlistate",
      "endocrino_metabolico"),
+    # ── Cardiovascular / Neuro / Endócrino adicionais (S44) ───────────────────
+    ("Glicosídeos Cardíacos (Digitálicos)",
+     "Inibição da bomba Na+/K+-ATPase do miócito → ↑ Na+ intracelular → ↑ Ca²⁺ via trocador Na+/Ca²⁺ → inotropismo positivo; efeito vagotônico → ↓ condução no nó AV (controle de frequência)",
+     "Na+/K+-ATPase (bomba de sódio-potássio) da membrana do cardiomiócito",
+     "cardiovascular"),
+    ("Corticosteroides Sistêmicos",
+     "Agonismo do receptor de glicocorticoide → transrepressão de genes pró-inflamatórios (NF-κB/AP-1) e transativação de anti-inflamatórios → efeito anti-inflamatório e imunossupressor amplo",
+     "Receptor de glicocorticoide (GR) citoplasmático/nuclear",
+     "endocrino_metabolico"),
 ]
 
 
@@ -888,4 +897,17 @@ MEDICAMENTOS = [
     ("Cianocobalamina",    "Cyanokit / Cianocobalamina Genérica",
      "Suplementos Minerais e Vitamínicos", "im/oral", True, True,
      "B12 def: 1000 μg IM diário x 7d → semanal x 4sem → mensal (indefinido para perniciosa); VO: 2000 μg/dia"),
+    # ── Fármacos crônicos ausentes do catálogo — cadastro S44 ─────────────────
+    ("Digoxina", "Digoxina / Digoxina Genérico",
+     "Glicosídeos Cardíacos (Digitálicos)", "oral", True, True,
+     "IC com FE reduzida e controle de frequência na FA; RENAME (comp. 0,25 mg / elixir 0,05 mg/mL); "
+     "janela terapêutica estreita — monitorar digoxinemia, K+ e função renal"),
+    ("Fenitoína", "Hidantal / Fenitoína Genérica",
+     "Antiepilépticos — Bloqueadores de Canal de Sódio", "oral", True, True,
+     "Epilepsia (crises focais e tônico-clônicas); RENAME; cinética não linear — monitorar níveis séricos; "
+     "hiperplasia gengival; indutor enzimático (CYP450)"),
+    ("Prednisona", "Meticorten / Prednisona Genérico",
+     "Corticosteroides Sistêmicos", "oral", True, True,
+     "Corticoide sistêmico anti-inflamatório/imunossupressor; RENAME (comp. 5/20 mg); "
+     "desmame gradual se uso prolongado"),
 ]

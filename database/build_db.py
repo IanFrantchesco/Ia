@@ -1626,6 +1626,52 @@ def report_and_ratchet_drops(conn):
         sys.exit(1)
 
 
+# Tabelas cujo esvaziamento indicaria build PARCIAL (nunca podem ficar vazias
+# num banco íntegro). Lista curada — usada só para SELECT count, e é allowlist
+# de identificadores fixos (mesmo princípio de segurança do S12), não entrada
+# externa.
+_TABELAS_CRITICAS = (
+    "fontes_oficiais", "categorias_patologias", "patologias",
+    "bacterias", "antibioticos", "eficacia_antibiotico",
+    "virus", "antivirais", "eficacia_antiviral",
+    "fungos", "antifungicos", "eficacia_antifungico",
+    "parasitos", "antiparasitarios", "eficacia_antiparasitario",
+    "medicamentos", "classes_medicamentos", "tratamento_padrao_ouro_cronico",
+    "posologia_cronica", "interacoes_medicamentos",
+)
+
+
+def assert_integridade(conn):
+    """Gate de integridade pós-build — FALHA ALTA (3a/3c da revisão de plataforma).
+
+    O ratchet (report_and_ratchet_drops) barra "nome não resolve". Este gate
+    fecha a porta complementar: corrupção estrutural e o esvaziamento silencioso
+    que ``INSERT OR IGNORE`` pode causar ao engolir violação de FK/CHECK/UNIQUE.
+    Barra o deploy (sys.exit 1) se o banco montado tiver:
+      1. órfãos de FK (foreign_key_check) — filho apontando pai inexistente;
+      2. corrupção estrutural (integrity_check != 'ok');
+      3. uma tabela crítica vazia (sinal de build parcial servido como completo).
+    """
+    problemas = []
+    orfaos = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if orfaos:
+        problemas.append(f"{len(orfaos)} órfão(s) de FK (ex.: {orfaos[:3]})")
+    integ = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    if integ != "ok":
+        problemas.append(f"integrity_check retornou {integ!r}")
+    for tab in _TABELAS_CRITICAS:
+        n = conn.execute(f"SELECT count(*) FROM {tab}").fetchone()[0]
+        if n == 0:
+            problemas.append(f"tabela crítica VAZIA: {tab}")
+    if problemas:
+        print("\n[ERRO] Gate de integridade FALHOU — deploy barrado:")
+        for p in problemas:
+            print(f"        ! {p}")
+        sys.exit(1)
+    print("[OK] Integridade: FK sem órfãos, estrutura íntegra, "
+          f"{len(_TABELAS_CRITICAS)} tabelas críticas populadas.")
+
+
 def build():
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
@@ -1890,6 +1936,7 @@ def build():
 
     print_summary(conn)
     report_and_ratchet_drops(conn)
+    assert_integridade(conn)
     # Checkpoint TRUNCATE: transfere todo o WAL de volta ao arquivo principal e
     # esvazia o -wal. Deixa o artefato auto-contido (todo o dado no .sqlite), o
     # que o torna mais limpo para embarcar e seguro caso um dia seja servido de

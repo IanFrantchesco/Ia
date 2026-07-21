@@ -229,6 +229,72 @@ def _get_medicamento_cronico_id(conn, nome):
     return row[0] if row else None
 
 
+# Fan-out de interações ancoradas em CLASSE (S45). A fonte (SBC etc.) agrupou
+# algumas interações sob um rótulo de classe ("Beta-bloqueadores (atenolol,
+# metoprolol, propranolol)"). O schema arquiva cada interação sob UM medicamento
+# específico (``medicamento_id``), então um rótulo-de-classe não resolvia e a
+# linha inteira era descartada — a interação sumia da API. Aqui cada âncora-classe
+# é EXPANDIDA para os fármacos específicos que a fonte nomeia: uma linha vira N,
+# uma por fármaco real. A especificidade fica explícita e revisável.
+#
+# Regra clínica que este dict codifica (por isso NÃO é um script cego):
+#   • Efeito farmacodinâmico de CLASSE (ex.: β-bloq + verapamil → bloqueio AV) →
+#     vale para todos os membros; expande para todos os nomeados.
+#   • Efeito de MEMBRO específico (ex.: inibidores fortes de CYP2D6 × tamoxifeno)
+#     → expande SÓ para os fármacos nomeados; jamais alargar para a classe toda.
+# Alvos = nome_generico EXATO do catálogo (validado no teste e no build).
+_INTERACAO_FANOUT = {
+    # Farmacodinâmico de classe — todos os membros nomeados pela fonte.
+    "Beta-bloqueadores (atenolol, metoprolol, propranolol)":
+        ["Atenolol", "Metoprolol Succinato", "Propranolol"],
+    "Estatinas (sinvastatina, atorvastatina)": ["Sinvastatina", "Atorvastatina"],
+    "Estatinas (sinvastatina)": ["Sinvastatina"],
+    "IECA (enalapril, ramipril)": ["Enalapril", "Ramipril"],
+    "IECA (enalapril) / BRA (losartana)": ["Enalapril", "Losartana"],
+    "Corticosteroide (prednisona)": ["Prednisona"],
+    "ISRS (sertralina, fluoxetina, escitalopram)":
+        ["Sertralina", "Fluoxetina", "Escitalopram"],
+    # Sangramento com AINEs é efeito serotonérgico de classe (sem membros
+    # nomeados na fonte) → todos os ISRS/IRSN do catálogo.
+    "ISRS / IRSN":
+        ["Sertralina", "Fluoxetina", "Escitalopram", "Paroxetina",
+         "Venlafaxina", "Duloxetina"],
+    # MEMBRO-específico: só inibidores fortes de CYP2D6 (NÃO alargar p/ ISRS).
+    "Fluoxetina / Paroxetina (inibidores CYP2D6)": ["Fluoxetina", "Paroxetina"],
+    "Sertralina / Fluoxetina (ISRS)": ["Sertralina", "Fluoxetina"],
+    "Antipsicóticos (haloperidol, quetiapina, risperidona)":
+        ["Haloperidol", "Quetiapina", "Risperidona"],
+    "SGLT-2 (empagliflozina, dapagliflozina)": ["Empagliflozina", "Dapagliflozina"],
+    "GLP-1 agonistas (semaglutida, liraglutida)": ["Semaglutida SC", "Liraglutida"],
+    "Tofacitinibe / Baricitinibe (JAK inibidores)": ["Tofacitinibe", "Baricitinibe"],
+    "AAS + Clopidogrel":
+        ["Ácido Acetilsalicílico (antiagregante)", "Clopidogrel"],
+    # Membro ausente do catálogo é OMITIDO (documentado): a linha resolve para os
+    # que existem; o membro faltante fica como dívida menor até eventual cadastro.
+    "Sulfonilureias (glibenclamida, glipizida)": ["Glibenclamida"],  # glipizida ausente
+    "Darbepoetina alfa / Eritropoetina": ["Darbepoetina alfa"],       # eritropoetina ausente
+}
+
+
+def _fanout_interacao_ids(conn, anchor):
+    """Se ``anchor`` é uma âncora-classe conhecida, retorna a lista de ids dos
+    fármacos específicos para os quais a interação deve ser replicada. Cada nome
+    do mapa DEVE resolver (senão é erro de digitação no mapa → ValueError, guard).
+    Retorna None quando ``anchor`` não é fan-out (caller usa resolução simples)."""
+    membros = _INTERACAO_FANOUT.get(anchor)
+    if membros is None:
+        return None
+    ids = []
+    for nome in membros:
+        mid = _get_medicamento_cronico_id(conn, nome)
+        if mid is None:
+            raise ValueError(
+                f"FANOUT: '{nome}' (de '{anchor}') não existe em medicamentos"
+            )
+        ids.append(mid)
+    return ids
+
+
 def _get_patologia_id_by_substr(conn, substr):
     """Resolve uma patologia por nome: alias conhecido → match exato → LIKE único.
 
@@ -1388,23 +1454,29 @@ def insert_interacoes_medicamentos_cronicos(conn):
     for rec in INTERACOES_MEDICAMENTOS_CRONICOS:
         (med_nome, med_inter, classe_inter,
          mecanismo, gravidade, efeito, conduta, fonte_sigla) = rec
-        med_id = _get_medicamento_cronico_id(conn, med_nome)
-        if med_id is None:
+        # S45: âncora-classe é expandida para 1 linha por fármaco específico;
+        # senão, resolução simples (1 âncora → 1 linha).
+        med_ids = _fanout_interacao_ids(conn, med_nome)
+        if med_ids is None:
+            single = _get_medicamento_cronico_id(conn, med_nome)
+            med_ids = [single] if single is not None else []
+        if not med_ids:
             skipped += 1
             continue
         try:
             fonte_id = get_id(conn, "fontes_oficiais", "sigla", fonte_sigla)
         except ValueError:
             fonte_id = None
-        conn.execute(
-            """INSERT INTO interacoes_medicamentos
-               (medicamento_id,medicamento_interagente,classe_interagente,
-                mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (med_id, med_inter, classe_inter,
-             mecanismo, gravidade, efeito, conduta, fonte_id),
-        )
-        inserted += 1
+        for med_id in med_ids:
+            conn.execute(
+                """INSERT INTO interacoes_medicamentos
+                   (medicamento_id,medicamento_interagente,classe_interagente,
+                    mecanismo,gravidade,efeito_clinico,conduta,fonte_id)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (med_id, med_inter, classe_inter,
+                 mecanismo, gravidade, efeito, conduta, fonte_id),
+            )
+            inserted += 1
     return inserted, skipped
 
 
@@ -1487,11 +1559,19 @@ def collect_unresolved(conn):
             if r[0] is not None and not _ok(drug_tab, "nome_generico", r[0]):
                 drops.add(f"{kind}:{r[0]}")
 
-    # crônico: mesma resolução do build (alias de nome + match exato)
-    for kind, data in [("pos_cron", POSOLOGIA_CRONICA), ("int_cron", INTERACOES_MEDICAMENTOS_CRONICOS)]:
-        for r in data:
-            if r[0] and _get_medicamento_cronico_id(conn, r[0]) is None:
-                drops.add(f"{kind}:{r[0]}")
+    # crônico: mesma resolução do build (alias de nome + match exato).
+    # Interações: uma âncora-classe do fan-out (S45) NÃO é drop — resolve para
+    # os fármacos específicos que expande.
+    for r in POSOLOGIA_CRONICA:
+        if r[0] and _get_medicamento_cronico_id(conn, r[0]) is None:
+            drops.add(f"pos_cron:{r[0]}")
+    for r in INTERACOES_MEDICAMENTOS_CRONICOS:
+        if not r[0]:
+            continue
+        if r[0] in _INTERACAO_FANOUT:
+            continue
+        if _get_medicamento_cronico_id(conn, r[0]) is None:
+            drops.add(f"int_cron:{r[0]}")
 
     # tratamentos: patologia não resolvida = registro descartado
     trats = [

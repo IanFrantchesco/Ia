@@ -90,6 +90,43 @@ def test_baseline_esta_zerado():
     assert build_db.collect_unresolved(_conn_banco()) == set()
 
 
+def _copia_do_banco(tmp_path):
+    import shutil
+    dst = tmp_path / "copia.sqlite"
+    shutil.copy(build_db.DB_PATH, dst)
+    return sqlite3.connect(dst)
+
+
+def test_integridade_passa_no_banco_real():
+    # O gate não pode falhar no banco montado corretamente.
+    build_db.assert_integridade(_conn_banco())
+
+
+def test_integridade_falha_em_tabela_critica_vazia(tmp_path):
+    # Esvaziar uma tabela crítica (simula build parcial) barra o deploy.
+    conn = _copia_do_banco(tmp_path)
+    conn.execute("DELETE FROM interacoes_medicamentos")
+    conn.commit()
+    with pytest.raises(SystemExit) as exc:
+        build_db.assert_integridade(conn)
+    assert exc.value.code == 1
+
+
+def test_integridade_falha_com_orfao_de_fk(tmp_path):
+    # Um filho apontando para pai inexistente (o que INSERT OR IGNORE poderia
+    # deixar passar se a FK não fosse enforced) é pego pelo foreign_key_check.
+    conn = _copia_do_banco(tmp_path)
+    conn.execute("PRAGMA foreign_keys=OFF")  # permite inserir o órfão
+    conn.execute(
+        "INSERT INTO interacoes_medicamentos (medicamento_id, medicamento_interagente) "
+        "VALUES (99999999, 'fármaco fantasma')"
+    )
+    conn.commit()
+    with pytest.raises(SystemExit) as exc:
+        build_db.assert_integridade(conn)
+    assert exc.value.code == 1
+
+
 def test_ratchet_falha_em_drop_novo(monkeypatch, tmp_path):
     # Um drop presente no conjunto atual mas ausente do baseline (drop NOVO)
     # deve fazer report_and_ratchet_drops chamar sys.exit(1). Independe de o

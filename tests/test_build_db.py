@@ -132,3 +132,47 @@ def test_fanout_anchor_nao_e_drop():
     drops = build_db.collect_unresolved(conn)
     for anchor in build_db._INTERACAO_FANOUT:
         assert f"int_cron:{anchor}" not in drops
+
+
+# ── S46: antimicrobianos do domínio fúngico (PCP) ───────────────────────────
+
+def test_pcp_antimicrobianos_registrados_em_antifungicos():
+    # Os fármacos do tratamento da PCP (que não são antifúngicos clássicos) foram
+    # registrados no catálogo do domínio fúngico para resolverem eficácia/
+    # posologia/interação da PCP e a sulfa da paracoccidioidomicose.
+    conn = _conn_banco()
+    esperados = ["Sulfametoxazol + Trimetoprima", "Pentamidina (isetionato)",
+                 "Clindamicina", "Atovaquona"]
+    catalogados = {r[0] for r in conn.execute(
+        "SELECT nome_generico FROM antifungicos").fetchall()}
+    for nome in esperados:
+        assert nome in catalogados, f"{nome!r} não registrado em antifungicos"
+
+
+def test_pcp_bloco_nao_tem_mais_drops():
+    # Nenhuma referência do bloco PCP/paraco (efic/pos/int antifúngico) segue
+    # sendo descartada após o cadastro cross-domínio.
+    conn = _conn_banco()
+    drops = build_db.collect_unresolved(conn)
+    for prefixo in ("efic_atf:Atovaquona", "efic_atf:Clindamicina",
+                    "efic_atf:Pentamidina", "efic_atf:Sulfadiazina + Trimetoprima",
+                    "int_atf:Pentamidina (isetionato)",
+                    "int_atf:Sulfametoxazol + Trimetoprima",
+                    "pos_atf:Pentamidina (isetionato)",
+                    "pos_atf:Sulfametoxazol + Trimetoprima"):
+        assert prefixo not in drops
+
+
+def test_pcp_primeira_linha_e_smx_tmp_nao_fallback():
+    # Regressão do bug clínico: a PCP tinha o fármaco de escolha (SMX-TMP)
+    # descartado e caía em card sintético. Agora é dado real de 1ª linha.
+    conn = _conn_banco()
+    pid = conn.execute(
+        "SELECT id FROM patologias WHERE nome LIKE '%Pneumocystis%'").fetchone()[0]
+    row = conn.execute(
+        """SELECT a.nome_generico, e.linha_tratamento, e.eficacia_pct
+           FROM eficacia_antifungico e JOIN antifungicos a ON a.id = e.antifungico_id
+           WHERE e.patologia_id = ? AND e.linha_tratamento = 1""", (pid,)).fetchone()
+    assert row is not None, "PCP sem eficácia de 1ª linha"
+    assert row[0] == "Sulfametoxazol + Trimetoprima"
+    assert row[2] and row[2] > 0
